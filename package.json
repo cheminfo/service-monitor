@@ -1,0 +1,43 @@
+{
+  "name": "service-monitor",
+  "version": "0.0.0",
+  "private": true,
+  "description": "What every process of a service logs, how it is doing, and the machine under it: a SQLite store with a Fastify plugin, and the React panels that read it.",
+  "license": "MIT",
+  "type": "module",
+  "workspaces": [
+    "backend",
+    "frontend"
+  ],
+  "scripts": {
+    "check-types": "npm run check-types -w service-monitor-backend && npm run check-types -w service-monitor-frontend",
+    "clean": "npm run clean -w service-monitor-backend && npm run clean -w service-monitor-frontend",
+    "eslint": "eslint .",
+    "eslint-fix": "eslint . --fix",
+    "prettier": "prettier --check .",
+    "prettier-write": "prettier --write .",
+    "test": "npm run test-only && npm run check-types && npm run eslint && npm run prettier",
+    "test-only": "npm run test-only -w service-monitor-backend && npm run test-only -w service-monitor-frontend",
+    "tsc": "npm run tsc -w service-monitor-backend && npm run tsc -w service-monitor-frontend"
+  },
+  "devDependencies": {
+    "eslint": "^9.39.5",
+    "eslint-config-cheminfo-react": "^20.1.0",
+    "eslint-config-cheminfo-typescript": "^22.1.0",
+    "globals": "^17.13.0",
+    "prettier": "^3.9.7",
+    "typescript": "^6"
+  },
+  "overrides": {
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/cheminfo/service-monitor.git"
+  },
+  "bugs": {
+    "url": "https://github.com/cheminfo/service-monitor/issues"
+  },
+  "homepage": "https://github.com/cheminfo/service-monitor#readme"
+}

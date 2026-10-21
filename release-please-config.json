@@ -1,0 +1,15 @@
+{
+  "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+  "release-type": "node",
+  "include-component-in-tag": true,
+  "include-v-in-tag": true,
+  "separate-pull-requests": false,
+  "packages": {
+    "backend": {
+      "package-name": "service-monitor-backend"
+    },
+    "frontend": {
+      "package-name": "service-monitor-frontend"
+    }
+  }
+}

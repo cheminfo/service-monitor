@@ -1,0 +1,250 @@
+/*
+ * The panels of service-monitor-frontend. Every colour, radius and border is a
+ * token of react-cheminfo's chrome.css, which the host page imports.
+ */
+
+.monitor-note {
+  margin: 0.5rem 0;
+  color: var(--text-muted);
+  font-size: 0.8125rem;
+}
+
+.monitor-faint {
+  color: var(--text-faint);
+  font-size: 0.8125rem;
+}
+
+/* ── health ─────────────────────────────────────────────────────────────── */
+
+.monitor-checks {
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+  margin: 0;
+  gap: 0.35rem;
+  list-style: none;
+}
+
+.monitor-check {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.monitor-check--ok {
+  color: var(--text-muted);
+}
+
+/* ── meters ─────────────────────────────────────────────────────────────── */
+
+.monitor-meters {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  gap: 0.75rem;
+}
+
+.monitor-meter dt {
+  display: flex;
+  justify-content: space-between;
+  font-weight: 600;
+}
+
+.monitor-meter dd {
+  margin: 0.25rem 0 0;
+}
+
+.monitor-meter__share {
+  font-variant-numeric: tabular-nums;
+}
+
+.monitor-meter__detail {
+  display: block;
+  margin-top: 0.2rem;
+  color: var(--text-muted);
+  font-size: 0.8125rem;
+}
+
+/* ── processes ──────────────────────────────────────────────────────────── */
+
+.monitor-scroll {
+  overflow-x: auto;
+}
+
+.monitor-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+}
+
+.monitor-table th {
+  padding: 0.35rem 0.75rem 0.35rem 0;
+  border-bottom: 1px solid var(--border);
+  color: var(--text-muted);
+  font-weight: 600;
+  text-align: left;
+}
+
+.monitor-table td {
+  padding: 0.45rem 0.75rem 0.45rem 0;
+  vertical-align: top;
+}
+
+.monitor-table .monitor-table__count {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.monitor-activity {
+  padding: 0;
+  margin: 0;
+  font-size: 0.8125rem;
+  list-style: none;
+}
+
+/* ── logs ───────────────────────────────────────────────────────────────── */
+
+.monitor-logs {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.monitor-filter-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.monitor-filter-bar__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.monitor-filter-bar__search {
+  flex: 1 1 16rem;
+  max-width: 28rem;
+}
+
+.monitor-filter-bar .monitor-filter-bar__live {
+  margin: 0;
+}
+
+.monitor-logs__stale {
+  opacity: 0.55;
+}
+
+.monitor-logs__older {
+  align-self: flex-start;
+}
+
+.monitor-log {
+  max-height: 36rem;
+  padding: 0.25rem 0;
+  margin: 0;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-sunken);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.75rem;
+  list-style: none;
+}
+
+.monitor-log__head {
+  display: flex;
+  width: 100%;
+  align-items: baseline;
+  padding: 0.1rem 0.5rem;
+  border: 0;
+  margin: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  gap: 0.6rem;
+  text-align: left;
+}
+
+.monitor-log__head--more {
+  cursor: pointer;
+}
+
+.monitor-log__head--more:hover {
+  background: var(--surface);
+}
+
+.monitor-log__head time {
+  flex: 0 0 auto;
+  color: var(--text-faint);
+  font-variant-numeric: tabular-nums;
+}
+
+.monitor-log .monitor-log__level {
+  flex: 0 0 3.25rem;
+  justify-content: center;
+  font-size: 0.6875rem;
+}
+
+.monitor-log__topic {
+  overflow: hidden;
+  flex: 0 0 8rem;
+  color: var(--text);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.monitor-log__role {
+  overflow: hidden;
+  flex: 0 0 7rem;
+  color: var(--text-muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.monitor-log__text {
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.monitor-log__line--warn .monitor-log__text {
+  color: var(--bp-intent-warning-foreground);
+}
+
+.monitor-log__line--error .monitor-log__text,
+.monitor-log__line--fatal .monitor-log__text {
+  color: var(--bp-intent-danger-foreground);
+}
+
+.monitor-log__meta {
+  padding: 0.4rem 0.75rem;
+  margin: 0.15rem 0.5rem 0.4rem 1.5rem;
+  overflow: auto;
+  border-left: 2px solid var(--border-strong);
+  background: var(--surface);
+  white-space: pre-wrap;
+}
+
+@media (width < 40rem) {
+  /* The message wraps under its line's head: a rule keeps each line apart. */
+  .monitor-log__line + .monitor-log__line {
+    border-top: 1px solid var(--border);
+  }
+
+  .monitor-log__head {
+    flex-wrap: wrap;
+    padding-block: 0.25rem;
+  }
+
+  .monitor-log__topic,
+  .monitor-log__role {
+    flex-basis: auto;
+  }
+
+  .monitor-log__text {
+    flex-basis: 100%;
+  }
+}

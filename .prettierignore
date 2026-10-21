@@ -1,0 +1,6 @@
+CHANGELOG.md
+**/CHANGELOG.md
+coverage
+**/coverage/
+**/lib/
+node_modules/
