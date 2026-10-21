@@ -1,0 +1,81 @@
+name: Release
+
+# Hand-written because `zakodium/workflows/release.yml@release-v1` is not
+# monorepo-aware: it reads the root `package.json` and runs `npm publish`
+# from the repo root, which is wrong for a workspaces setup with two
+# publishable packages (`backend/` and `frontend/`).
+#
+# Once `zakodium/workflows` exposes a monorepo mode (see the matching PR),
+# this file should be replaced by a one-line `uses:` of the shared workflow.
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      publish_backend:
+        description: 'Publish service-monitor-backend'
+        type: boolean
+        default: false
+      publish_frontend:
+        description: 'Publish service-monitor-frontend'
+        type: boolean
+        default: false
+
+jobs:
+  release-please:
+    if: ${{ github.event_name == 'push' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      any_released: ${{ steps.release.outputs.releases_created }}
+      backend_released: ${{ steps.release.outputs['backend--release_created'] }}
+      frontend_released: ${{ steps.release.outputs['frontend--release_created'] }}
+    steps:
+      - uses: googleapis/release-please-action@v5
+        id: release
+        with:
+          token: ${{ secrets.BOT_TOKEN }}
+
+  publish-backend:
+    needs: [release-please]
+    if: |
+      always() &&
+      (
+        (needs.release-please.result == 'success' && needs.release-please.outputs.backend_released == 'true') ||
+        (github.event_name == 'workflow_dispatch' && inputs.publish_backend)
+      )
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          registry-url: 'https://registry.npmjs.org'
+      - run: npm ci
+      - run: npm publish --no-ignore-scripts --access public -w service-monitor-backend
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_BOT_TOKEN }}
+
+  publish-frontend:
+    needs: [release-please]
+    if: |
+      always() &&
+      (
+        (needs.release-please.result == 'success' && needs.release-please.outputs.frontend_released == 'true') ||
+        (github.event_name == 'workflow_dispatch' && inputs.publish_frontend)
+      )
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          registry-url: 'https://registry.npmjs.org'
+      - run: npm ci
+      - run: npm publish --no-ignore-scripts --access public -w service-monitor-frontend
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_BOT_TOKEN }}
