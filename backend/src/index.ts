@@ -6,6 +6,7 @@ export type { LogQuery } from './store/logQuery.ts';
 export type { LogRetention } from './store/retention.ts';
 export type { LogRow } from './store/statements.ts';
 export { SCHEMA_TABLE } from './store/migrate.ts';
+export { monitorStorePath } from './store/monitorStorePath.ts';
 export { LogSink } from './logs/LogSink.ts';
 export type { LogSinkOptions, ProcessIdentity } from './logs/LogSink.ts';
 export { parseLogLine } from './logs/parseLogLine.ts';
