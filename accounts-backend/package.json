@@ -1,6 +1,6 @@
 {
   "name": "service-accounts-backend",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Accounts that sign in to the operator's pages of a Fastify service: PBKDF2 passwords, signed session cookies, a SQLite store, the sign-in and account routes, and a guard that also takes the operator's token.",
   "keywords": [
     "accounts",
