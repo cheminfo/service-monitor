@@ -4,6 +4,7 @@ export type {
   ServiceAccounts,
   ServiceAccountsOptions,
 } from './serviceAccounts.ts';
+export type { SignedIn } from './guard.ts';
 export { AccountStore } from './store/AccountStore.ts';
 export type { AccountInsert, AccountRow } from './store/AccountStore.ts';
 export { accountStorePath } from './store/accountStorePath.ts';

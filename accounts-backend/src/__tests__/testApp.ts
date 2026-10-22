@@ -1,4 +1,4 @@
-import type { FastifyInstance } from 'fastify';
+import type { FastifyInstance, FastifyRequest } from 'fastify';
 import Fastify from 'fastify';
 
 import { createAccount } from '../accounts.ts';
@@ -25,7 +25,8 @@ export interface TestApp {
 
 /**
  * A site with two accounts, `admin` and `ada`, the accounts' routes under
- * `/v1/admin`, and a protected `GET /v1/admin/status` of its own.
+ * `/v1/admin`, a protected `GET /v1/admin/status` of its own, and
+ * `/v1/open`, open to everybody, saying who it was asked by.
  * @param options - how the site is built
  * @param options.logger - what the server logs to
  * @returns the site and its accounts
@@ -58,6 +59,13 @@ export async function testApp(
     },
     { prefix: '/v1/admin' },
   );
+  const askedBy = async (request: FastifyRequest) => {
+    const signedIn = await accounts.signedIn(request);
+    if (signedIn === null) return { by: 'nobody' };
+    return { by: signedIn.account?.username ?? 'token' };
+  };
+  app.get('/v1/open', askedBy);
+  app.post('/v1/open', askedBy);
   await app.ready();
   return { app, store };
 }

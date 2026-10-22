@@ -3,13 +3,14 @@ import fastifyRateLimit from '@fastify/rate-limit';
 import type {
   FastifyInstance,
   FastifyPluginAsync,
+  FastifyRequest,
   FastifySchema,
 } from 'fastify';
 
 import type { FirstAccountEnvironment } from './firstAccount.ts';
 import { firstAccount } from './firstAccount.ts';
-import type { AccountsContext } from './guard.ts';
-import { createGuard } from './guard.ts';
+import type { AccountsContext, SignedIn } from './guard.ts';
+import { createGuard, signedInOf } from './guard.ts';
 import { accountRoutes } from './routes/accountRoutes.ts';
 import type { DocumentedSchema } from './routes/documented.ts';
 import {
@@ -78,6 +79,15 @@ export interface ServiceAccounts {
    * @param scope - an encapsulated scope, so the routes beside it stay open
    */
   protect: (scope: FastifyInstance) => void;
+  /**
+   * Who a request comes from, refusing nobody: an account signed in, the
+   * operator's token (`account` null), or null for anybody else. For a route
+   * open to everybody that shows more to the operator, which should then
+   * answer `Cache-Control: private`.
+   * @param request - the request
+   * @returns who, or null
+   */
+  signedIn: (request: FastifyRequest) => Promise<SignedIn | null>;
   /**
    * Create the first account when the store has none, from ADMIN_USERNAME and
    * ADMIN_PASSWORD. Call it once, as the server starts.
@@ -170,6 +180,7 @@ export async function createServiceAccounts(
   return {
     routes,
     protect,
+    signedIn: (request) => signedInOf(context, request),
     ensureFirstAccount: async (log, env) =>
       firstAccount(await context.store(), log, env),
     securitySchemes: accountSecuritySchemes(cookieName),

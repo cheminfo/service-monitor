@@ -31,6 +31,12 @@ export interface AccountsContext {
   adminToken: string | undefined;
 }
 
+/** Who a request is let through for. */
+export interface SignedIn {
+  /** The account signed in, or null when the operator's token was sent. */
+  account: AccountRow | null;
+}
+
 /**
  * The hook that lets the operator's token through, and the requests of an
  * account signed in, and refuses every other. A session changes nothing from
@@ -39,44 +45,26 @@ export interface AccountsContext {
  * @returns the `onRequest` hook
  */
 export function createGuard(context: AccountsContext) {
-  const { sessions, cookieName, adminToken } = context;
   return async function guard(
     request: FastifyRequest,
     reply: FastifyReply,
   ): Promise<FastifyReply | undefined> {
-    const token = bearerToken(request);
-    if (
-      adminToken !== undefined &&
-      adminToken !== '' &&
-      token !== undefined &&
-      (await sameSecret(adminToken, token))
-    ) {
-      request.signedInAccount = null;
+    const identity = await identify(context, request);
+    if (identity.status === 'token' || identity.status === 'account') {
+      request.signedInAccount =
+        identity.status === 'account' ? identity.account : null;
       return undefined;
     }
-
-    const session = sessionCookie(request, cookieName);
-    if (token === undefined && session !== undefined) {
-      const store = await context.store();
-      const account = await sessions.verify(session, (id) => store.byId(id));
-      if (account !== null) {
-        // The cookie is never sent from another site, and a browser names the
-        // page a change comes from: refusing one from elsewhere is the second
-        // lock on the same door.
-        if (!CHANGES.has(request.method) || isSameOrigin(request)) {
-          request.signedInAccount = account;
-          return undefined;
-        }
-        request.log.warn(
-          { clientIp: request.ip, origin: request.headers.origin },
-          'refused an operator change from another site',
-        );
-        return reply.code(403).send({
-          statusCode: 403,
-          error: 'Forbidden',
-          message: 'the operator changes things from this site’s own pages',
-        });
-      }
+    if (identity.status === 'elsewhere') {
+      request.log.warn(
+        { clientIp: request.ip, origin: request.headers.origin },
+        'refused an operator change from another site',
+      );
+      return reply.code(403).send({
+        statusCode: 403,
+        error: 'Forbidden',
+        message: 'the operator changes things from this site’s own pages',
+      });
     }
 
     request.log.warn({ clientIp: request.ip }, 'refused an operator request');
@@ -86,9 +74,31 @@ export function createGuard(context: AccountsContext) {
       .send({
         statusCode: 401,
         error: 'Unauthorized',
-        message: refusalOf(token, session, adminToken),
+        message: refusalOf(
+          identity.token,
+          identity.session,
+          context.adminToken,
+        ),
       });
   };
+}
+
+/**
+ * Who a request comes from, refusing nobody: for a route open to everybody
+ * that shows more to an account signed in, or to the operator's token. A
+ * session asking for a change from another site's page counts as nobody.
+ * @param context - the accounts, the sessions and the operator's token
+ * @param request - the request
+ * @returns who, or null for nobody
+ */
+export async function signedInOf(
+  context: AccountsContext,
+  request: FastifyRequest,
+): Promise<SignedIn | null> {
+  const identity = await identify(context, request);
+  if (identity.status === 'token') return { account: null };
+  if (identity.status === 'account') return { account: identity.account };
+  return null;
 }
 
 /**
@@ -108,6 +118,56 @@ export function sessionCookie(
   const header = request.headers.cookie;
   if (header === undefined) return undefined;
   return fastifyCookie.parse(header)[cookieName];
+}
+
+/** What a request's credentials say, before anything is decided on them. */
+type Identity =
+  | { status: 'token' }
+  | { status: 'account'; account: AccountRow }
+  | { status: 'elsewhere' }
+  | {
+      status: 'nobody';
+      token: string | undefined;
+      session: string | undefined;
+    };
+
+/**
+ * Read a request's credentials: the operator's token, or a session that is
+ * still valid. A valid session asking for a change from another site's page
+ * is `elsewhere`: the cookie is never sent from another site, and a browser
+ * names the page a change comes from, so refusing it is the second lock on
+ * the same door.
+ * @param context - the accounts, the sessions and the operator's token
+ * @param request - the request
+ * @returns what they say
+ */
+async function identify(
+  context: AccountsContext,
+  request: FastifyRequest,
+): Promise<Identity> {
+  const { sessions, cookieName, adminToken } = context;
+  const token = bearerToken(request);
+  if (
+    adminToken !== undefined &&
+    adminToken !== '' &&
+    token !== undefined &&
+    (await sameSecret(adminToken, token))
+  ) {
+    return { status: 'token' };
+  }
+
+  const session = sessionCookie(request, cookieName);
+  if (token === undefined && session !== undefined) {
+    const store = await context.store();
+    const account = await sessions.verify(session, (id) => store.byId(id));
+    if (account !== null) {
+      if (!CHANGES.has(request.method) || isSameOrigin(request)) {
+        return { status: 'account', account };
+      }
+      return { status: 'elsewhere' };
+    }
+  }
+  return { status: 'nobody', token, session };
 }
 
 /**

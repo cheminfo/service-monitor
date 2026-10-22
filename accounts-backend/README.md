@@ -41,10 +41,22 @@ await fastify.register(
   { prefix: '/v1/admin' },
 );
 
+// A route open to everybody that shows the operator more: who asks, or null.
+fastify.get('/v1/spectra', async (request, reply) => {
+  const signedIn = await accounts.signedIn(request);
+  if (signedIn !== null) reply.header('cache-control', 'private');
+  return listSpectra({ includePrivate: signedIn !== null });
+});
+
 // Once, as the server starts: the first account, from ADMIN_USERNAME
 // (`admin` when unset) and ADMIN_PASSWORD.
 await accounts.ensureFirstAccount(fastify.log);
 ```
+
+`accounts.signedIn(request)` reads the same credentials as the guard but
+refuses nobody: it answers `{ account }` for an account signed in, `{ account:
+null }` for the operator's token, and `null` for anybody else, a session asking
+for a change from another site's page included.
 
 List `accounts.securitySchemes` under `components.securitySchemes` of the
 host's `@fastify/swagger` document: every route names the credentials it takes.
