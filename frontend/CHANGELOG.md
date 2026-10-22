@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.1](https://github.com/cheminfo/service-monitor/compare/service-monitor-frontend-v0.1.0...service-monitor-frontend-v0.1.1) (2026-10-22)
+
+
+### Bug Fixes
+
+* retry a failed read of the logs while live, and keep every filter clearable ([c669ff9](https://github.com/cheminfo/service-monitor/commit/c669ff9c4546a45711f28a96708cfa0aaf693f03))
+
 ## 0.1.0 (2026-10-22)
 
 
