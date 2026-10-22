@@ -1,14 +1,24 @@
 # service-monitor
 
-Two npm packages from one repository, shaped like `sqlite3-viewer`:
+Four npm packages from one repository, shaped like `sqlite3-viewer`:
 `service-monitor-backend` (`backend/`) and `service-monitor-frontend`
-(`frontend/`). Extracted from molecules.cheminfo.org's System page so every
-site with several processes logs and reports the same way.
+(`frontend/`), extracted from molecules.cheminfo.org's System page so every
+site with several processes logs and reports the same way; and
+`service-accounts-backend` (`accounts-backend/`) and
+`service-accounts-frontend` (`accounts-frontend/`), extracted from
+molecules.cheminfo.org's Admin sign-in so every site's operator signs in the
+same way.
 
 ## The contract
 
 - The HTTP contract is `backend/src/types.ts`, copied verbatim to
-  `frontend/src/types.ts`. Change both in the same commit.
+  `frontend/src/types.ts`. Change both in the same commit. The accounts'
+  contract is `accounts-backend/src/types.ts`, the same bytes as
+  `accounts-frontend/src/types.ts`; a frontend test fails while they differ.
+- The accounts' store is `sqlite/accounts.sqlite`, its migrations recorded in
+  `service_accounts_version`. `accounts-backend/src/store/migrate.ts` is the
+  monitor's `migrate.ts` with that table name: fix a trap in one, fix it in
+  both.
 - Levels are pino's numbers (fifo-logger's too). The topic is the logger's
   `name`; a line with a `reqId` is `http`, whatever its name.
 - The store's migrations live in `backend/src/store/migrations` as
@@ -35,8 +45,11 @@ site with several processes logs and reports the same way.
 
 ## Consumers
 
-molecules.cheminfo.org, chembio.cheminfo.org, mz.cheminfo.org and openalex
-(literature, on fat only), through `file:` links while unpublished. Each Vite
+The accounts: chembio.cheminfo.org, first; molecules.cheminfo.org, mz and
+literature still carry their own sign-in or token gate and move to it next.
+
+The monitor: molecules.cheminfo.org, chembio.cheminfo.org, mz.cheminfo.org and
+openalex (literature, on fat only), through `file:` links while unpublished. Each Vite
 config dedupes React, Blueprint and react-cheminfo, which a linked package
 would otherwise resolve from this checkout, and each host's `fastify` must be
 the version installed here: a linked package reads the types of its own copy,

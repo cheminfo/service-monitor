@@ -2,8 +2,9 @@ name: Release
 
 # Hand-written because `zakodium/workflows/release.yml@release-v1` is not
 # monorepo-aware: it reads the root `package.json` and runs `npm publish`
-# from the repo root, which is wrong for a workspaces setup with two
-# publishable packages (`backend/` and `frontend/`).
+# from the repo root, which is wrong for a workspaces setup with four
+# publishable packages (`backend/`, `frontend/`, `accounts-backend/` and
+# `accounts-frontend/`).
 #
 # Once `zakodium/workflows` exposes a monorepo mode (see the matching PR),
 # this file should be replaced by a one-line `uses:` of the shared workflow.
@@ -22,6 +23,14 @@ on:
         description: 'Publish service-monitor-frontend'
         type: boolean
         default: false
+      publish_accounts_backend:
+        description: 'Publish service-accounts-backend'
+        type: boolean
+        default: false
+      publish_accounts_frontend:
+        description: 'Publish service-accounts-frontend'
+        type: boolean
+        default: false
 
 jobs:
   release-please:
@@ -32,6 +41,8 @@ jobs:
       any_released: ${{ steps.release.outputs.releases_created }}
       backend_released: ${{ steps.release.outputs['backend--release_created'] }}
       frontend_released: ${{ steps.release.outputs['frontend--release_created'] }}
+      accounts_backend_released: ${{ steps.release.outputs['accounts-backend--release_created'] }}
+      accounts_frontend_released: ${{ steps.release.outputs['accounts-frontend--release_created'] }}
     steps:
       - uses: googleapis/release-please-action@v5
         id: release
@@ -77,5 +88,47 @@ jobs:
           registry-url: 'https://registry.npmjs.org'
       - run: npm ci
       - run: npm publish --no-ignore-scripts --access public -w service-monitor-frontend
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_BOT_TOKEN }}
+
+  publish-accounts-backend:
+    needs: [release-please]
+    if: |
+      always() &&
+      (
+        (needs.release-please.result == 'success' && needs.release-please.outputs.accounts_backend_released == 'true') ||
+        (github.event_name == 'workflow_dispatch' && inputs.publish_accounts_backend)
+      )
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          registry-url: 'https://registry.npmjs.org'
+      - run: npm ci
+      - run: npm publish --no-ignore-scripts --access public -w service-accounts-backend
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_BOT_TOKEN }}
+
+  publish-accounts-frontend:
+    needs: [release-please]
+    if: |
+      always() &&
+      (
+        (needs.release-please.result == 'success' && needs.release-please.outputs.accounts_frontend_released == 'true') ||
+        (github.event_name == 'workflow_dispatch' && inputs.publish_accounts_frontend)
+      )
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          registry-url: 'https://registry.npmjs.org'
+      - run: npm ci
+      - run: npm publish --no-ignore-scripts --access public -w service-accounts-frontend
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_BOT_TOKEN }}

@@ -2,16 +2,19 @@
 
 What every process of a service logs, how each one is doing, and the machine
 under them — kept in one SQLite file every process writes to, and read from one
-page. Two npm packages from one repository, like
-[sqlite3-viewer](https://github.com/cheminfo/sqlite3-viewer):
+page — and the accounts that sign in to read it. Four npm packages from one
+repository, like [sqlite3-viewer](https://github.com/cheminfo/sqlite3-viewer):
 
-| Package                                  | What it does                                                                                                    |
-| ---------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
-| [`service-monitor-backend`](./backend)   | The store, a pino destination, a heartbeat, the machine's figures, generic health checks, and a Fastify plugin. |
-| [`service-monitor-frontend`](./frontend) | `<LogsViewer>`, `<ProcessesTable>`, `<HostPanel>` and `<HealthChecks>`, on Blueprint and react-cheminfo.        |
+| Package                                            | What it does                                                                                                                                                               |
+| -------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [`service-monitor-backend`](./backend)             | The store, a pino destination, a heartbeat, the machine's figures, generic health checks, and a Fastify plugin.                                                            |
+| [`service-monitor-frontend`](./frontend)           | `<LogsViewer>`, `<ProcessesTable>`, `<HostPanel>` and `<HealthChecks>`, on Blueprint and react-cheminfo.                                                                   |
+| [`service-accounts-backend`](./accounts-backend)   | The accounts of the operator's pages: PBKDF2 passwords, signed session cookies, a SQLite store, the sign-in and account routes, and a guard that also takes `ADMIN_TOKEN`. |
+| [`service-accounts-frontend`](./accounts-frontend) | `<SignInGate>`, `<SignInForm>`, `<AccountsPage>` and `<AccountMenu>`, on Blueprint and react-cheminfo.                                                                     |
 
-The two talk only through the plugin's four routes. Each side holds the
-contract in its own `types.ts`.
+Each pair talks only through its routes, and each side holds the contract in
+its own `types.ts`. The accounts do not need the monitor, nor the monitor the
+accounts; a site that has both guards the monitor's routes with the accounts.
 
 ## The model
 

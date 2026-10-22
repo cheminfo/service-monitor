@@ -7,18 +7,20 @@
   "type": "module",
   "workspaces": [
     "backend",
-    "frontend"
+    "frontend",
+    "accounts-backend",
+    "accounts-frontend"
   ],
   "scripts": {
-    "check-types": "npm run check-types -w service-monitor-backend && npm run check-types -w service-monitor-frontend",
-    "clean": "npm run clean -w service-monitor-backend && npm run clean -w service-monitor-frontend",
+    "check-types": "npm run check-types -w service-monitor-backend && npm run check-types -w service-monitor-frontend && npm run check-types -w service-accounts-backend && npm run check-types -w service-accounts-frontend",
+    "clean": "npm run clean -w service-monitor-backend && npm run clean -w service-monitor-frontend && npm run clean -w service-accounts-backend && npm run clean -w service-accounts-frontend",
     "eslint": "eslint .",
     "eslint-fix": "eslint . --fix",
     "prettier": "prettier --check .",
     "prettier-write": "prettier --write .",
     "test": "npm run test-only && npm run check-types && npm run eslint && npm run prettier",
-    "test-only": "npm run test-only -w service-monitor-backend && npm run test-only -w service-monitor-frontend",
-    "tsc": "npm run tsc -w service-monitor-backend && npm run tsc -w service-monitor-frontend"
+    "test-only": "npm run test-only -w service-monitor-backend && npm run test-only -w service-monitor-frontend && npm run test-only -w service-accounts-backend && npm run test-only -w service-accounts-frontend",
+    "tsc": "npm run tsc -w service-monitor-backend && npm run tsc -w service-monitor-frontend && npm run tsc -w service-accounts-backend && npm run tsc -w service-accounts-frontend"
   },
   "devDependencies": {
     "eslint": "^9.39.5",

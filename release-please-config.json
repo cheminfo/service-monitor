@@ -12,6 +12,12 @@
     },
     "frontend": {
       "package-name": "service-monitor-frontend"
+    },
+    "accounts-backend": {
+      "package-name": "service-accounts-backend"
+    },
+    "accounts-frontend": {
+      "package-name": "service-accounts-frontend"
     }
   }
 }

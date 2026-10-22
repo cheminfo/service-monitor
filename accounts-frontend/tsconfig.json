@@ -1,0 +1,8 @@
+{
+  "extends": "@zakodium/tsconfig/jsx",
+  "compilerOptions": {
+    "noUncheckedIndexedAccess": true,
+    "outDir": "lib"
+  },
+  "include": ["src", "vite*.ts"]
+}

@@ -1,0 +1,51 @@
+{
+  "name": "service-accounts-backend",
+  "version": "0.0.0",
+  "description": "Accounts that sign in to the operator's pages of a Fastify service: PBKDF2 passwords, signed session cookies, a SQLite store, the sign-in and account routes, and a guard that also takes the operator's token.",
+  "keywords": [
+    "accounts",
+    "authentication",
+    "fastify",
+    "session",
+    "sqlite"
+  ],
+  "author": "Luc Patiny",
+  "license": "MIT",
+  "type": "module",
+  "exports": {
+    ".": "./lib/index.js"
+  },
+  "files": [
+    "lib",
+    "src"
+  ],
+  "scripts": {
+    "check-types": "tsc --noEmit",
+    "clean": "rimraf coverage lib",
+    "prepack": "npm run tsc",
+    "test-only": "vitest run --coverage",
+    "tsc": "npm run clean && npm run tsc-build",
+    "tsc-build": "tsc --project tsconfig.build.json"
+  },
+  "dependencies": {
+    "@fastify/cookie": "^11.1.3",
+    "@fastify/rate-limit": "^11.2.1",
+    "postgrator": "^8.0.0"
+  },
+  "peerDependencies": {
+    "fastify": "^5.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.3.0",
+    "@vitest/coverage-v8": "^5.0.5",
+    "@zakodium/tsconfig": "^1.0.5",
+    "fastify": "^5.12.7",
+    "rimraf": "^6.1.3",
+    "vitest": "^5.0.5"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/cheminfo/service-monitor.git",
+    "directory": "accounts-backend"
+  }
+}
