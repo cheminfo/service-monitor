@@ -92,22 +92,22 @@ export function LogFilterBar(props: LogFilterBarProps) {
         value={minLevel}
         onChange={onMinLevel}
       />
-      {facets !== null && facets.topics.length > 1 && (
+      {((facets?.topics.length ?? 0) > 1 || topics.length > 0) && (
         <CapsuleFilter
           multiple
           label="Topics"
           allOption={{ label: 'every topic' }}
-          options={facetOptions(facets.topics)}
+          options={facetOptions(facets?.topics ?? [], topics)}
           values={topics}
           onChange={onTopics}
         />
       )}
-      {facets !== null && facets.roles.length > 1 && (
+      {((facets?.roles.length ?? 0) > 1 || roles.length > 0) && (
         <CapsuleFilter
           multiple
           label="Processes"
           allOption={{ label: 'every process' }}
-          options={facetOptions(facets.roles)}
+          options={facetOptions(facets?.roles ?? [], roles)}
           values={roles}
           onChange={onRoles}
         />
@@ -117,15 +117,28 @@ export function LogFilterBar(props: LogFilterBarProps) {
 }
 
 /**
- * A capsule per topic or role, saying when it last logged.
- * @param facets - the topics or the roles
+ * A capsule per topic or role, saying when it last logged, and one for each
+ * chosen that no longer logs — its lines deleted with their age — so a filter
+ * on it can still be taken off.
+ * @param facets - the topics or the roles that have logged
+ * @param chosen - the ones the lines are narrowed to
  * @returns the capsules
  */
-function facetOptions(facets: readonly LogFacet[]) {
-  return facets.map((facet) => ({
+function facetOptions(facets: readonly LogFacet[], chosen: readonly string[]) {
+  const options = facets.map((facet) => ({
     value: facet.name,
     label: facet.name,
     intent: 'primary' as const,
     title: `Last logged ${formatRelativeTime(facet.lastAt)}`,
   }));
+  for (const name of chosen) {
+    if (facets.some((facet) => facet.name === name)) continue;
+    options.push({
+      value: name,
+      label: name,
+      intent: 'primary',
+      title: 'No line of it is kept any more',
+    });
+  }
+  return options;
 }

@@ -27,20 +27,22 @@ export function HostPanel(props: { host: HostMetrics }) {
       <dl className="monitor-meters">
         <Meter
           label="Processor, whole machine"
-          share={(cpu.hostPercent ?? 0) / 100}
+          share={shareOf(cpu.hostPercent ?? 0, 100)}
           detail={`${cpu.hostPercent === null ? '—' : `${cpu.hostPercent}%`} of ${cpu.cores} cores · load ${cpu.load.join(' / ')}`}
         />
         {cpu.containerPercent !== null && (
           <Meter
             label="Processor, server container"
-            share={cpu.containerPercent / 100 / (cpu.quota ?? cpu.cores)}
+            // A reading over two moments can run past the quota: the bar
+            // stops at full, and the figures say by how much.
+            share={shareOf(cpu.containerPercent / 100, cpu.quota ?? cpu.cores)}
             detail={`${cpu.containerPercent}% of one core${cpu.quota === null ? '' : `, ${cpu.quota} allowed`}`}
           />
         )}
         <Meter
           label="Memory, whole machine"
           share={shareOf(memoryUsed, memory.total)}
-          detail={`${formatBytes(memoryUsed)} of ${formatBytes(memory.total)}, page cache included`}
+          detail={`${formatBytes(memoryUsed)} of ${formatBytes(memory.total)}, page cache counted as free`}
         />
         {memory.containerUsed !== null && (
           <Meter

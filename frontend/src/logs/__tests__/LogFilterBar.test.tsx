@@ -193,6 +193,68 @@ test('a single topic or a single process is no choice, and gets no row', () => {
   expect(rows.map((row) => row.label)).toStrictEqual(['From level']);
 });
 
+test('a topic or a process chosen that no longer logs keeps its row, so it can be taken off', () => {
+  const rows = capsuleRows(
+    barOf({
+      facets: {
+        topics: [{ name: 'http', lastAt: NOW }],
+        roles: [],
+      },
+      topics: ['db'],
+      roles: ['import'],
+    }),
+  );
+
+  expect(rows.slice(1)).toStrictEqual([
+    {
+      label: 'Topics',
+      capsules: [
+        {
+          text: 'every topic',
+          title: undefined,
+          filled: false,
+          intent: 'none',
+        },
+        {
+          text: 'http',
+          title: 'Last logged just now',
+          filled: false,
+          intent: 'primary',
+        },
+        {
+          text: 'db',
+          title: 'No line of it is kept any more',
+          filled: true,
+          intent: 'primary',
+        },
+      ],
+    },
+    {
+      label: 'Processes',
+      capsules: [
+        {
+          text: 'every process',
+          title: undefined,
+          filled: false,
+          intent: 'none',
+        },
+        {
+          text: 'import',
+          title: 'No line of it is kept any more',
+          filled: true,
+          intent: 'primary',
+        },
+      ],
+    },
+  ]);
+});
+
+test('a filter chosen before the topics are read keeps its row', () => {
+  const rows = capsuleRows(barOf({ facets: null, topics: ['http'] }));
+
+  expect(rows.map((row) => row.label)).toStrictEqual(['From level', 'Topics']);
+});
+
 test('the search box holds the text given, and the switch says whether the lines are live', () => {
   const live = barOf({ text: 'disk full', isLive: true });
   const still = barOf({ isLive: false });

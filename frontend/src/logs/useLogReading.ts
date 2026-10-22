@@ -61,6 +61,9 @@ export function useLogReading(
 ) {
   const { pageSize, refreshMs, isLive } = options;
   const [reloads, setReloads] = useState(0);
+  // A new attempt at the same filters: it replaces what is on show only once
+  // it answers, so a failure stays said while the next attempt is under way.
+  const [attempts, setAttempts] = useState(0);
   const [reading, setReading] = useState<Reading | null>(null);
   const [facets, setFacets] = useState<LogFacetsResponse | null>(null);
   const [isLoadingOlder, setIsLoadingOlder] = useState(false);
@@ -68,7 +71,11 @@ export function useLogReading(
   const key = `${logsSearch(filters)}#${reloads}`;
   const current = reading?.key === key ? reading : null;
   const newestId = current?.lines[0]?.id ?? 0;
-  const isReadable = current !== null && current.error === null;
+  // The first page could not be read: there is nothing on show to put newer
+  // lines in front of. A failed older page leaves the newer lines readable.
+  const hasFailed =
+    current !== null && current.error !== null && current.lines.length === 0;
+  const isReadable = current !== null && !hasFailed;
 
   useEffect(() => {
     let isCancelled = false;
@@ -99,7 +106,7 @@ export function useLogReading(
     return () => {
       isCancelled = true;
     };
-  }, [client, filters, key, pageSize]);
+  }, [client, filters, key, pageSize, attempts]);
 
   useEffect(() => {
     let isCancelled = false;
@@ -115,6 +122,24 @@ export function useLogReading(
       isCancelled = true;
     };
   }, [client, reloads]);
+
+  // While live, a first page that failed is asked for again at the same pace,
+  // so a moment the server is away does not stop the viewer for good. One
+  // attempt per failure: the next waits for the last to answer, so a server
+  // slower than the pace is not asked over and over.
+  useEffect(() => {
+    if (!isLive || !hasFailed) return;
+    let timer: ReturnType<typeof setTimeout>;
+    const retry = () => {
+      if (document.visibilityState === 'visible') {
+        setAttempts((count) => count + 1);
+      } else {
+        timer = setTimeout(retry, refreshMs);
+      }
+    };
+    timer = setTimeout(retry, refreshMs);
+    return () => clearTimeout(timer);
+  }, [isLive, hasFailed, current, refreshMs]);
 
   useEffect(() => {
     if (!isLive || !isReadable) return;
@@ -158,6 +183,7 @@ export function useLogReading(
               ...previous,
               lines: previous.lines.concat(page.logs),
               nextBefore: page.nextBefore,
+              error: null,
             }
           : previous,
       );

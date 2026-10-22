@@ -222,11 +222,15 @@ test('a search that stopped at the most recent lines says so', async () => {
   ]);
 });
 
-test('lines that cannot be read are said, nothing more is read, and the button reads them again', async () => {
-  const pages: Record<string, LogsResponse | Response> = {
-    'minLevel=info&limit=200': refusal(500, 'The store is closed'),
-  };
-  const { host, asked } = viewerOf(pages);
+test('lines that cannot be read are said alone, and read again at the live pace until they come', async () => {
+  let isDown = true;
+  const monitor = fakeMonitor((route) => {
+    if (route === '/logs/facets') return FACETS;
+    return isDown ? refusal(500, 'The store is closed') : logsPage([REQUEST]);
+  });
+  const { host } = mount(
+    <LogsViewer apiBasePath={BASE_PATH} fetcher={monitor.fetcher} />,
+  );
   await advance();
 
   expect(textsOf(host, '.bp6-callout .bp6-heading')).toStrictEqual([
@@ -235,16 +239,80 @@ test('lines that cannot be read are said, nothing more is read, and the button r
   expect(host.querySelector('.bp6-callout')?.textContent).toBe(
     'The lines could not be read/v1/monitor/logs?minLevel=info&limit=200 answered 500: The store is closed',
   );
+  // Nothing could be read, which is not the same as nothing matching.
+  expect(textsOf(host, '.monitor-note')).toStrictEqual([]);
 
-  await advance(10_000);
+  await advance(5000);
 
-  expect(asked).toHaveLength(2);
+  expect(monitor.asked).toStrictEqual([
+    '/v1/monitor/logs?minLevel=info&limit=200',
+    '/v1/monitor/logs/facets',
+    '/v1/monitor/logs?minLevel=info&limit=200',
+  ]);
+  expect(textsOf(host, '.bp6-callout .bp6-heading')).toStrictEqual([
+    'The lines could not be read',
+  ]);
 
-  pages['minLevel=info&limit=200'] = logsPage([REQUEST]);
+  isDown = false;
+  await advance(5000);
+
+  expect(monitor.asked).toHaveLength(4);
+  expect(host.querySelectorAll('.bp6-callout')).toHaveLength(0);
+  expect(linesOf(host)).toHaveLength(1);
+});
+
+test('a server slower than the pace is asked again only once it answered', async () => {
+  const held = heldAnswer();
+  let reads = 0;
+  const monitor = fakeMonitor((route) => {
+    if (route === '/logs/facets') return FACETS;
+    reads += 1;
+    if (reads === 1) return refusal(503, 'Deploying');
+    if (reads === 2) return held.promise;
+    return logsPage([REQUEST]);
+  });
+  const { host } = mount(
+    <LogsViewer apiBasePath={BASE_PATH} fetcher={monitor.fetcher} />,
+  );
+  await advance();
+
+  await advance(5000);
+  await advance(30_000);
+  const whileHeld = reads;
+  held.release(refusal(503, 'Still deploying'));
+  await advance();
+  const said = host.querySelector('.bp6-callout')?.textContent;
+  await advance(5000);
+
+  expect(whileHeld).toBe(2);
+  expect(said).toBe(
+    'The lines could not be read/v1/monitor/logs?minLevel=info&limit=200 answered 503: Still deploying',
+  );
+  expect(reads).toBe(3);
+  expect(linesOf(host)).toHaveLength(1);
+});
+
+test('with live off, lines that cannot be read wait for the button', async () => {
+  let isDown = true;
+  const monitor = fakeMonitor((route) => {
+    if (route === '/logs/facets') return FACETS;
+    return isDown ? refusal(500, 'The store is closed') : logsPage([REQUEST]);
+  });
+  const { host } = mount(
+    <LogsViewer apiBasePath={BASE_PATH} fetcher={monitor.fetcher} />,
+  );
+  await advance();
+
+  click(host.querySelector('.monitor-filter-bar__live input'));
+  await advance(20_000);
+
+  expect(monitor.asked).toHaveLength(2);
+
+  isDown = false;
   click(host.querySelector('[aria-label="Read again"]'));
   await advance();
 
-  expect(asked.slice(2)).toStrictEqual([
+  expect(monitor.asked.slice(2)).toStrictEqual([
     '/v1/monitor/logs?minLevel=info&limit=200',
     '/v1/monitor/logs/facets',
   ]);
@@ -297,6 +365,45 @@ test('an older page that cannot be read is said above the lines kept on show', a
   );
   expect(linesOf(host)).toHaveLength(2);
   expect(textsOf(host, '.monitor-logs__older')).toStrictEqual(['Older lines']);
+});
+
+test('an older page that failed is read again on demand, and the lines written since keep coming meanwhile', async () => {
+  let olderReads = 0;
+  const monitor = fakeMonitor((_route, query) => {
+    const search = query.toString();
+    if (search === 'minLevel=info&limit=200') {
+      return logsPage([REQUEST, SLOW_QUERY], { nextBefore: 41 });
+    }
+    if (search === 'minLevel=info&before=41&limit=200') {
+      olderReads += 1;
+      return olderReads === 1
+        ? refusal(503, 'Try again')
+        : logsPage([logLine(40, { at: NOW - 60_000 })]);
+    }
+    if (search === 'minLevel=info&after=42&limit=200') {
+      return logsPage([logLine(43, { at: NOW + 4000, message: 'later' })]);
+    }
+    if (search === '') return FACETS;
+    return logsPage([]);
+  });
+  const { host } = mount(
+    <LogsViewer apiBasePath={BASE_PATH} fetcher={monitor.fetcher} />,
+  );
+  await advance();
+
+  click(byText(host, 'button', 'Older lines'));
+  await advance();
+  const failed = textsOf(host, '.bp6-callout .bp6-heading');
+  await advance(5000);
+  const whileFailed = linesOf(host).length;
+
+  click(byText(host, 'button', 'Older lines'));
+  await advance();
+
+  expect(failed).toStrictEqual(['The lines could not be read']);
+  expect(whileFailed).toBe(3);
+  expect(host.querySelectorAll('.bp6-callout')).toHaveLength(0);
+  expect(linesOf(host)).toHaveLength(4);
 });
 
 test('while live, the lines written since are read every five seconds and put in front', async () => {

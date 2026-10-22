@@ -176,7 +176,8 @@ export interface HostMetrics {
      */
     total: number;
     /**
-     * What the machine has free, page cache excluded, in bytes.
+     * What the machine can still give, in bytes: on Linux `MemAvailable`, so
+     * the page cache the kernel can reclaim counts as free.
      */
     free: number;
     /**

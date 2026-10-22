@@ -52,7 +52,7 @@ test('outside a container, the processor, the memory and the data volume of the 
       share: '63 %',
       bar: 63,
       intent: 'primary',
-      detail: '40.0 GB of 64.0 GB, page cache included',
+      detail: '40.0 GB of 64.0 GB, page cache counted as free',
     },
     {
       label: 'Data volume',
@@ -100,6 +100,21 @@ test('in a container, its processor is read against its quota and its memory aga
       detail: '768 MB of 1.0 GB',
     },
   ]);
+});
+
+test('a container running past its quota fills its bar, and its figures say by how much', () => {
+  const meters = metersOf({
+    ...HOST,
+    cpu: { ...HOST.cpu, quota: 2, containerPercent: 250 },
+  });
+
+  expect(meters[1]).toStrictEqual({
+    label: 'Processor, server container',
+    share: '100 %',
+    bar: 100,
+    intent: 'danger',
+    detail: '250% of one core, 2 allowed',
+  });
 });
 
 test('a container with no quota is read against the cores, and one with no limit against the memory of the machine', () => {

@@ -75,6 +75,10 @@ export function LogsViewer(props: LogsViewerProps) {
   );
   const { reading, isCurrent, facets, isLoadingOlder, loadOlder, reload } =
     useLogReading(client, filters, { pageSize, refreshMs, isLive });
+  // A page that could not be read holds no line, which is not the same as no
+  // line matching: the error is all that is said.
+  const hasFailed =
+    isCurrent && Boolean(reading?.error) && reading?.lines.length === 0;
 
   return (
     <div className="monitor-logs" data-testid="monitor-logs">
@@ -106,9 +110,8 @@ export function LogsViewer(props: LogsViewerProps) {
           The search read the most recent lines only.
         </p>
       )}
-      {reading === null ? (
-        <Spinner size={24} />
-      ) : (
+      {reading === null && <Spinner size={24} />}
+      {reading !== null && !hasFailed && (
         <div className={isCurrent ? undefined : 'monitor-logs__stale'}>
           <LogList
             lines={reading.lines}
