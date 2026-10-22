@@ -1,6 +1,6 @@
 {
   "name": "service-monitor-backend",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "One SQLite store for what every process of a service logs, by topic and level, and how each process and the machine are doing; a pino destination, a heartbeat, and a Fastify plugin that reads it.",
   "keywords": [
     "fastify",

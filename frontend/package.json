@@ -1,6 +1,6 @@
 {
   "name": "service-monitor-frontend",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "React and Blueprint panels for the service-monitor-backend plugin: the logs of every process by topic and level, the processes, the machine and the health checks.",
   "keywords": [
     "blueprintjs",
