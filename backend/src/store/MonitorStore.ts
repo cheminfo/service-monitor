@@ -1,3 +1,5 @@
+import { mkdirSync } from 'node:fs';
+import { dirname } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 
 import { LEVEL_VALUES } from '../levels.ts';
@@ -47,7 +49,8 @@ export interface MonitorStoreOptions {
  */
 export class MonitorStore {
   /**
-   * Open the store, creating its tables or bringing them up to date.
+   * Open the store, creating its directory and its tables or bringing them up
+   * to date: a process may well log before the service's own database exists.
    * @param path - the file, or `:memory:` for tests
    * @param options - how it reads
    * @returns the store
@@ -56,6 +59,7 @@ export class MonitorStore {
     path: string,
     options: MonitorStoreOptions = {},
   ): Promise<MonitorStore> {
+    if (path !== ':memory:') mkdirSync(dirname(path), { recursive: true });
     const database = new DatabaseSync(path);
     try {
       if (path !== ':memory:') applyPragmas(database);

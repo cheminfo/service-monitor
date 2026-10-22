@@ -48,3 +48,21 @@ test('the client reads under its base path, and a refusal says why', async () =>
     '/v1/admin/monitor/host',
   ]);
 });
+
+test('the status is read under the base path', async () => {
+  const asked: string[] = [];
+  const client = createMonitorClient('/v1/admin/monitor', (input) => {
+    asked.push(typeof input === 'string' ? input : 'not a string');
+    return Promise.resolve(
+      Response.json({ readAt: 5, checks: [], host: null, processes: [] }),
+    );
+  });
+
+  await expect(client.status()).resolves.toStrictEqual({
+    readAt: 5,
+    checks: [],
+    host: null,
+    processes: [],
+  });
+  expect(asked).toStrictEqual(['/v1/admin/monitor/status']);
+});

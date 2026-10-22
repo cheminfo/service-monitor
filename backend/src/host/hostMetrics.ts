@@ -1,13 +1,7 @@
+import type { StatsFs } from 'node:fs';
 import { statfsSync } from 'node:fs';
-import {
-  availableParallelism,
-  cpus,
-  freemem,
-  hostname,
-  loadavg,
-  totalmem,
-  uptime,
-} from 'node:os';
+import { cpus, freemem, hostname, loadavg, totalmem, uptime } from 'node:os';
+import { dirname, resolve } from 'node:path';
 
 import type { HostMetrics } from '../types.ts';
 
@@ -55,12 +49,14 @@ export function readHostMetrics(dataDirectory: string): HostMetrics {
   }
   last.reading = { at, idle, busy, containerUsec };
 
-  const disk = statfsSync(dataDirectory);
+  const disk = volumeOf(dataDirectory);
   return {
     hostname: hostname(),
     uptimeSeconds: Math.round(uptime()),
     cpu: {
-      cores: availableParallelism(),
+      // The machine's, not the quota's: availableParallelism() already counts
+      // the cores a container's quota allows, which `quota` reports.
+      cores: cpus().length,
       quota: cpuQuota() ?? null,
       load: loadavg().map(round) as [number, number, number],
       hostPercent,
@@ -77,6 +73,30 @@ export function readHostMetrics(dataDirectory: string): HostMetrics {
       available: disk.bavail * disk.bsize,
     },
   };
+}
+
+/**
+ * The volume a path is on, read at the nearest directory that exists: the
+ * data directory of a fresh checkout, or of a test, may not be made yet.
+ * @param path - the path
+ * @returns the volume's figures
+ */
+function volumeOf(path: string): StatsFs {
+  let current = resolve(path);
+  for (;;) {
+    try {
+      return statfsSync(current);
+    } catch (error: unknown) {
+      const parent = dirname(current);
+      if (
+        (error as { code?: unknown }).code !== 'ENOENT' ||
+        parent === current
+      ) {
+        throw error;
+      }
+      current = parent;
+    }
+  }
 }
 
 /**

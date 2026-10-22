@@ -28,8 +28,9 @@ contract in its own `types.ts`.
   event-loop delay and what it says it is doing. It removes its row when it
   stops, so one that died is told apart by the age of its row.
 - **Retention** is a week for the lines below `warn`, at most a million of
-  them, and ninety days for warnings and errors. `store.prune()` deletes in
-  chunks of 5000 rows, yielding between them.
+  them, and ninety days for warnings and errors. The plugin deletes what is
+  past it once an hour while the server runs, in chunks of 5000 rows, yielding
+  between them.
 - **Reads stay fast at any size.** Warnings and errors have partial indexes of
   their own, so reading them never walks past the request lines; a text search
   reads the most recent 100,000 lines and says when it stopped short.
@@ -40,36 +41,39 @@ contract in its own `types.ts`.
 import pino from 'pino';
 import {
   LogSink,
-  MonitorStore,
+  monitorStoreOpener,
   monitorStorePath,
   serviceMonitorPlugin,
   startHeartbeat,
 } from 'service-monitor-backend';
 
-// Once per process.
+// Once per process. Each stream takes every level: the logger's decides.
 const sink = new LogSink();
 const logger = pino(
   { name: 'importer' }, // the topic
-  pino.multistream([{ stream: pino.destination(1) }, { stream: sink }]),
+  pino.multistream([
+    { level: 'trace', stream: pino.destination(1) },
+    { level: 'trace', stream: sink },
+  ]),
 );
 
-const store = MonitorStore.open(
+// Opened on first use, shared by every caller, tried again after a failure.
+const store = monitorStoreOpener(
   monitorStorePath(process.env.DATA_DIR ?? 'data'),
 );
-void sink.attach(store, { role: 'import' }); // lines logged before wait for it
-const heartbeat = startHeartbeat({ store, role: 'import' });
+// Lines logged before the store opens wait for it.
+const heartbeat = startHeartbeat({ store: store(), role: 'import', sink });
 heartbeat.activity.entries = 12_000;
 
-// In the server: the routes, behind the host's authentication.
+// In the server: the routes, behind the host's authentication. The plugin also
+// deletes the lines past their retention, once an hour.
 await fastify.register(serviceMonitorPlugin, {
   prefix: '/v1/admin/monitor',
-  store: () => store,
+  store,
   dataDirectory: 'data',
-  preHandler: requireAdmin,
+  preHandler: requireAdmin, // a callback or an async hook
+  expectedRoles: { scheduler: 'no source is imported again' },
 });
-
-// Once an hour, in one process.
-await (await store).prune(Date.now());
 ```
 
 | Route              | Answers                                                                                                         |
@@ -78,22 +82,33 @@ await (await store).prune(Date.now());
 | `GET /logs/facets` | the topics and roles that have logged, with when each last did                                                  |
 | `GET /processes`   | what every process reported in the last day, each marked stale once it missed three beats                       |
 | `GET /host`        | the machine's processor, memory and data volume, and the container's when it runs in one                        |
+| `GET /status`      | the health checks, the machine and every process, read at one instant: what a monitor page shows but the lines  |
 
-`diskCheck`, `memoryCheck`, `processChecks` and `logErrorsCheck` judge what the
-store and the machine say; the host adds its own checks and sorts them all with
-`sortChecks`.
+`GET /status` judges the data volume, the container's memory, whether every
+process reports and every role in `expectedRoles` runs, and the errors of the
+last hour; `checks` adds the host's own. `readMonitorStatus` reads the same
+for a host that composes a status of its own, and `diskCheck`, `memoryCheck`,
+`processChecks`, `logErrorsCheck` and `sortChecks` are the pieces.
 
 ## Frontend
 
 ```tsx
 import 'service-monitor-frontend/styles.css';
-import { LogsViewer } from 'service-monitor-frontend';
+import { ServiceMonitor } from 'service-monitor-frontend';
 
-<LogsViewer apiBasePath="/v1/admin/monitor" />;
+<ServiceMonitor
+  apiBasePath="/v1/admin/monitor"
+  fetcher={adminFetch} // the host's authentication, when a cookie does not carry it
+  section={section} // 'overview' | 'processes' | 'logs', from the address
+  onSectionChange={navigateToSection}
+/>;
 ```
 
-`fetcher` carries the host's authentication when a cookie does not. The panels
-are styled with the tokens of react-cheminfo's `chrome.css`.
+`<ServiceMonitor>` is the whole page: a tab per section, the status read again
+every ten seconds while it is on show. Give it the same `fetcher` at every
+render. `<LogsViewer>`, `<ProcessesTable>`, `<HostPanel>` and `<HealthChecks>`
+are its parts, for a host whose page holds more. The panels are styled with
+the tokens of react-cheminfo's `chrome.css`.
 
 ## Development
 

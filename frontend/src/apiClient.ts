@@ -3,6 +3,7 @@ import type {
   LogFacetsResponse,
   LogLevel,
   LogsResponse,
+  MonitorStatus,
   ProcessesResponse,
 } from './types.ts';
 
@@ -80,6 +81,7 @@ export function createMonitorClient(
     facets: () => request<LogFacetsResponse>('/logs/facets'),
     processes: () => request<ProcessesResponse>('/processes'),
     host: () => request<HostMetrics>('/host'),
+    status: () => request<MonitorStatus>('/status'),
   };
 }
 

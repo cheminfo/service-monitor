@@ -1,5 +1,9 @@
 export { serviceMonitorPlugin } from './plugin.ts';
-export type { ServiceMonitorPluginOptions, StoreSource } from './plugin.ts';
+export type {
+  MonitorPreHandler,
+  ServiceMonitorPluginOptions,
+  StoreSource,
+} from './plugin.ts';
 export { MonitorStore } from './store/MonitorStore.ts';
 export type { MonitorStoreOptions } from './store/MonitorStore.ts';
 export type { LogQuery } from './store/logQuery.ts';
@@ -7,6 +11,7 @@ export type { LogRetention } from './store/retention.ts';
 export type { LogRow } from './store/statements.ts';
 export { SCHEMA_TABLE } from './store/migrate.ts';
 export { monitorStorePath } from './store/monitorStorePath.ts';
+export { monitorStoreOpener } from './store/monitorStoreOpener.ts';
 export { LogSink } from './logs/LogSink.ts';
 export type { LogSinkOptions, ProcessIdentity } from './logs/LogSink.ts';
 export { parseLogLine } from './logs/parseLogLine.ts';
@@ -23,6 +28,8 @@ export {
   sortChecks,
 } from './health/checks.ts';
 export type { ProcessCheckOptions } from './health/checks.ts';
+export { readMonitorStatus } from './health/status.ts';
+export type { CheckContext, MonitorStatusOptions } from './health/status.ts';
 export {
   LEVELS,
   LEVEL_VALUES,

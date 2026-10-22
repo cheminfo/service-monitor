@@ -35,6 +35,10 @@ site with several processes logs and reports the same way.
 
 ## Consumers
 
-molecules.cheminfo.org, through `file:` links while unpublished; its Vite
+molecules.cheminfo.org, chembio.cheminfo.org, mz.cheminfo.org and openalex
+(literature, on fat only), through `file:` links while unpublished. Each Vite
 config dedupes React, Blueprint and react-cheminfo, which a linked package
-would otherwise resolve from this checkout.
+would otherwise resolve from this checkout, and each host's `fastify` must be
+the version installed here: a linked package reads the types of its own copy,
+and two copies' types do not match. On fat every image is built with a
+fat-only `Dockerfile.fat` that copies this checkout to `/service-monitor`.

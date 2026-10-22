@@ -14,6 +14,53 @@
   font-size: 0.8125rem;
 }
 
+/* ── the page ───────────────────────────────────────────────────────────── */
+
+.monitor-page {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+/* The tabs read from the left, the refresh keeps the right. */
+.monitor-page__bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.monitor-page > .monitor-note {
+  margin: 0;
+}
+
+.monitor-panel {
+  padding: 1rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
+}
+
+.monitor-panel h2 {
+  margin: 0 0 0.75rem;
+  font-size: 1rem;
+}
+
+.monitor-grid {
+  display: grid;
+  align-items: start;
+  gap: 1rem;
+  grid-template-columns: minmax(0, 1fr);
+}
+
+@media (width >= 64rem) {
+  .monitor-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
 /* ── health ─────────────────────────────────────────────────────────────── */
 
 .monitor-checks {

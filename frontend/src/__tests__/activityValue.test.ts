@@ -10,3 +10,7 @@ test('a figure is written by what its name says it is', () => {
     activityValue('elapsedMs', 90_000),
   ]).toStrictEqual(['parsing', 'false', '1,204,000', '1m 30s']);
 });
+
+test('a figure with no value is a dash, not the word null', () => {
+  expect(activityValue('importing', null)).toBe('—');
+});

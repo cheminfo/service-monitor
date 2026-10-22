@@ -5,18 +5,36 @@ import type {
   preHandlerHookHandler,
 } from 'fastify';
 
+import type { MonitorStatusOptions } from './health/status.ts';
+import { readMonitorStatus } from './health/status.ts';
 import { readHostMetrics } from './host/hostMetrics.ts';
 import { LEVELS } from './levels.ts';
 import type { MonitorStore } from './store/MonitorStore.ts';
 import { MAX_LIMIT } from './store/logQuery.ts';
+import type { LogRetention } from './store/retention.ts';
 import type {
   LogFacetsResponse,
   LogLevel,
   LogsResponse,
+  MonitorStatus,
   ProcessesResponse,
 } from './types.ts';
 
 const DEFAULT_PREFIX = '/v1/monitor';
+
+/**
+ * How long after the server is ready the lines are first pruned: past the
+ * start, and before a server restarted more often than hourly never does.
+ */
+const FIRST_PRUNE_DELAY_MS = 60_000;
+
+/**
+ * A hook run before each route, as a route's own `preHandler` is: with a
+ * `done` callback, or async.
+ */
+export type MonitorPreHandler = (
+  ...args: Parameters<preHandlerHookHandler>
+) => void | Promise<unknown>;
 
 /**
  * The store, or what opens it.
@@ -27,24 +45,32 @@ export type StoreSource =
   | (() => MonitorStore | Promise<MonitorStore>);
 
 /**
- * Options for `serviceMonitorPlugin`.
+ * Options for `serviceMonitorPlugin`: the store, the host's authentication,
+ * what `GET /status` expects, and how long the lines are kept.
  */
-export interface ServiceMonitorPluginOptions {
+export interface ServiceMonitorPluginOptions extends MonitorStatusOptions {
   /**
    * The store the routes read; a function is called at every request.
    */
   store: StoreSource;
   /**
-   * A path on the volume whose free space `GET /host` reports.
-   * @default process.cwd()
-   */
-  dataDirectory?: string;
-  /**
    * Run before every route, to require the host's authentication: the lines
    * name paths, processes and errors nobody else needs to read.
    * @default undefined
    */
-  preHandler?: preHandlerHookHandler;
+  preHandler?: MonitorPreHandler;
+  /**
+   * How often the lines past their retention are deleted while the server
+   * runs, in milliseconds, the first time a minute after it is ready; 0 never
+   * deletes them, for a service another process of which does.
+   * @default 3600000
+   */
+  pruneIntervalMs?: number;
+  /**
+   * How long the lines are kept.
+   * @default a week below `warn`, at most a million of them; ninety days for the others
+   */
+  retention?: LogRetention;
 }
 
 interface LogsQuerystring {
@@ -63,9 +89,12 @@ interface LogsQuerystring {
  * - `GET /logs` — a page of lines, by level, topic, role and text;
  * - `GET /logs/facets` — the topics and roles that have logged;
  * - `GET /processes` — what every running process last reported;
- * - `GET /host` — the machine's processor, memory and data volume.
+ * - `GET /host` — the machine's processor, memory and data volume;
+ * - `GET /status` — the health checks, the machine and the processes at once.
  *
  * Mounted under `/v1/monitor`, or under the `prefix` it is registered with.
+ * While the server runs it also deletes, once an hour, the lines past their
+ * retention.
  * @param fastify - the instance
  * @param options - the store, and the host's authentication
  */
@@ -90,7 +119,7 @@ export const serviceMonitorPlugin: FastifyPluginAsync<
 };
 
 /**
- * Register the four routes.
+ * Register the routes, and the pruning.
  * @param fastify - the instance, under its prefix
  * @param options - the plugin's options
  */
@@ -98,11 +127,20 @@ function registerRoutes(
   fastify: FastifyInstance,
   options: ServiceMonitorPluginOptions,
 ): void {
-  const { preHandler, dataDirectory = process.cwd() } = options;
+  const {
+    preHandler,
+    dataDirectory = process.cwd(),
+    expectedRoles,
+    mainRole,
+    checks,
+    pruneIntervalMs = 3_600_000,
+    retention,
+  } = options;
   const store = () =>
     Promise.resolve(
       typeof options.store === 'function' ? options.store() : options.store,
     );
+  schedulePruning(fastify, store, pruneIntervalMs, retention);
 
   fastify.get<{ Querystring: LogsQuerystring }>(
     '/logs',
@@ -179,6 +217,78 @@ function registerRoutes(
     },
     () => readHostMetrics(dataDirectory),
   );
+
+  fastify.get(
+    '/status',
+    {
+      preHandler,
+      schema: documented({
+        summary:
+          'The health checks, the machine and every process, read at one instant',
+        description:
+          'Everything a monitor page shows but the lines: whether the data volume and the memory hold, whether every process reports and every expected role runs, and the errors of the last hour, judged the worst first. The processor share is measured since the previous reading of `/status` or `/host`, so a page reads one of the two.',
+      }),
+    },
+    async (): Promise<MonitorStatus> =>
+      readMonitorStatus(await store(), {
+        dataDirectory,
+        expectedRoles,
+        mainRole,
+        checks,
+      }),
+  );
+}
+
+/**
+ * Delete the lines past their retention once an hour while the server runs,
+ * the first time a minute after it is ready. A pass still running when the
+ * next is due is not doubled, and closing the server waits for it.
+ * @param fastify - the instance
+ * @param store - opens the store
+ * @param intervalMs - how often; 0 never
+ * @param retention - how long the lines are kept
+ */
+function schedulePruning(
+  fastify: FastifyInstance,
+  store: () => Promise<MonitorStore>,
+  intervalMs: number,
+  retention: LogRetention | undefined,
+): void {
+  if (!(intervalMs > 0)) return;
+  let first: NodeJS.Timeout | undefined;
+  let every: NodeJS.Timeout | undefined;
+  let running: Promise<void> | undefined;
+
+  const prune = () => {
+    running ??= (async () => {
+      try {
+        const opened = await store();
+        const deleted = await opened.prune(Date.now(), retention);
+        if (deleted > 0) {
+          fastify.log.info(`${deleted} log lines past their retention deleted`);
+        }
+      } catch (error: unknown) {
+        fastify.log.warn({ err: error }, 'the log lines were not pruned');
+      }
+    })().finally(() => {
+      running = undefined;
+    });
+  };
+
+  fastify.addHook('onReady', async () => {
+    first = setTimeout(
+      () => {
+        prune();
+        every = setInterval(prune, intervalMs).unref();
+      },
+      Math.min(FIRST_PRUNE_DELAY_MS, intervalMs),
+    ).unref();
+  });
+  fastify.addHook('onClose', async () => {
+    clearTimeout(first);
+    clearInterval(every);
+    await running;
+  });
 }
 
 /**

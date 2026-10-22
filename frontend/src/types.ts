@@ -214,3 +214,20 @@ export interface HealthCheck {
    */
   message: string;
 }
+
+/**
+ * What `GET /status` answers: everything a monitor page shows but the lines,
+ * read at one instant.
+ */
+export interface MonitorStatus {
+  /**
+   * Unix milliseconds, so every age is measured from one instant.
+   */
+  readAt: number;
+  /**
+   * The judgements, the worst first.
+   */
+  checks: HealthCheck[];
+  host: HostMetrics;
+  processes: ProcessView[];
+}

@@ -1,6 +1,7 @@
 import { hostname } from 'node:os';
 import { monitorEventLoopDelay } from 'node:perf_hooks';
 
+import type { LogSink } from './logs/LogSink.ts';
 import type { MonitorStore } from './store/MonitorStore.ts';
 import type { Activity, ProcessStatus } from './types.ts';
 
@@ -16,6 +17,12 @@ export interface HeartbeatOptions {
    * What the process is: `server`, `import`, …
    */
   role: string;
+  /**
+   * The sink the process's loggers write to, attached to the store under the
+   * same role, so its lines and its status are told apart the same way.
+   * @default undefined
+   */
+  sink?: LogSink;
   /**
    * Read at every beat, for figures the process does not push itself; merged
    * over `activity`.
@@ -51,12 +58,13 @@ export interface Heartbeat {
  * Write this process's status to the store at every beat, until it stops:
  * its memory, processor share, event-loop delay and what it says it is
  * doing. A process that died without stopping is told apart by the age of
- * its status.
- * @param options - the store, the role and the activity
+ * its status. Given its loggers' sink, keep their lines in the same store.
+ * @param options - the store, the role, the sink and the activity
  * @returns the heartbeat, whose `activity` the process keeps up to date
  */
 export function startHeartbeat(options: HeartbeatOptions): Heartbeat {
-  const { role, readActivity, intervalMs = 10_000 } = options;
+  const { role, sink, readActivity, intervalMs = 10_000 } = options;
+  if (sink !== undefined) void sink.attach(options.store, { role });
   const host = hostname();
   const startedAt = Date.now();
   const delay = monitorEventLoopDelay({ resolution: 20 });

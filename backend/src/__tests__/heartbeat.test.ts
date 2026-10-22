@@ -1,8 +1,10 @@
 import { hostname } from 'node:os';
 
+import { pino } from 'pino';
 import { expect, test, vi } from 'vitest';
 
 import { startHeartbeat } from '../heartbeat.ts';
+import { LogSink } from '../logs/LogSink.ts';
 
 import { openStore } from './fixtures.ts';
 
@@ -47,4 +49,31 @@ test('a store that never opens leaves the process working', async () => {
   expect(() => heartbeat.beat()).not.toThrow();
 
   heartbeat.stop();
+});
+
+test("a heartbeat given the sink keeps the process's lines under its role", async () => {
+  const store = await openStore();
+  const sink = new LogSink();
+  const logger = pino(
+    { name: 'scheduler' },
+    { write: (line: string) => sink.write(line) },
+  );
+  logger.info('looking at the sources');
+  const heartbeat = startHeartbeat({
+    store: Promise.resolve(store),
+    role: 'scheduler',
+    sink,
+    intervalMs: 60_000,
+  });
+
+  await vi.waitFor(() => {
+    expect(
+      store
+        .queryLogs({})
+        .logs.map(({ topic, role, message }) => [topic, role, message]),
+    ).toStrictEqual([['scheduler', 'scheduler', 'looking at the sources']]);
+  });
+
+  heartbeat.stop();
+  sink.detach();
 });

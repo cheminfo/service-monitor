@@ -8,12 +8,13 @@ import type { Activity } from './types.ts';
 
 /**
  * One figure of an activity, written by what its name says it is: an instant
- * (`…At`), a duration (`…Ms`) or a count.
+ * (`…At`), a duration (`…Ms`) or a count; a figure with no value is a dash.
  * @param name - the figure's name
  * @param value - its value
  * @returns the figure, as the page writes it
  */
 export function activityValue(name: string, value: Activity[string]): string {
+  if (value === null) return '—';
   if (typeof value !== 'number') return String(value);
   if (name.endsWith('At')) return formatRelativeTime(value);
   if (name.endsWith('Ms')) return formatDuration(value);
