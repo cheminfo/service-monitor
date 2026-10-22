@@ -66,3 +66,34 @@ test('the status is read under the base path', async () => {
   });
   expect(asked).toStrictEqual(['/v1/admin/monitor/status']);
 });
+
+test('a refusal says its error when it has no message, and its status text when it says neither', async () => {
+  const client = createMonitorClient('/v1/monitor', (input) => {
+    if (input === '/v1/monitor/processes') {
+      return Promise.resolve(
+        Response.json({ error: 'Forbidden' }, { status: 403 }),
+      );
+    }
+    if (input === '/v1/monitor/status') {
+      return Promise.resolve(
+        Response.json({}, { status: 404, statusText: 'Not Found' }),
+      );
+    }
+    return Promise.resolve(
+      new Response('<h1>Bad gateway</h1>', {
+        status: 502,
+        statusText: 'Bad Gateway',
+      }),
+    );
+  });
+
+  await expect(client.processes()).rejects.toThrow(
+    '/v1/monitor/processes answered 403: Forbidden',
+  );
+  await expect(client.status()).rejects.toThrow(
+    '/v1/monitor/status answered 404: Not Found',
+  );
+  await expect(client.host()).rejects.toThrow(
+    '/v1/monitor/host answered 502: Bad Gateway',
+  );
+});

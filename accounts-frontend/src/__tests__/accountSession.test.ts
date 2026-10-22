@@ -1,13 +1,21 @@
-import { expect, test } from 'vitest';
+import { expect, onTestFinished, test, vi } from 'vitest';
 
 import { aboutSignIn } from '../aboutSignIn.ts';
 import { createAccountSession } from '../accountSession.ts';
 import {
   AccountsRequestError,
   createAccountsClient,
+  messageOf,
   sentenceOf,
 } from '../accountsClient.ts';
 import { pairProblem } from '../passwords.ts';
+
+/**
+ * A server nothing reaches.
+ * @returns a rejected request, as a fetch with no network answers
+ */
+const unreachable: typeof fetch = () =>
+  Promise.reject(new TypeError('fetch failed'));
 
 /** One request the fake server was sent. */
 interface Asked {
@@ -193,4 +201,91 @@ test('a message becomes a sentence, and two new passwords must agree', () => {
   expect(sentenceOf('nothing')).toBe('The request failed.');
   expect(pairProblem('a', 'a')).toBeNull();
   expect(pairProblem('a', 'b')).toBe('The two new passwords differ.');
+});
+
+test("the session's fetch carries the cookie, and a 401 signs every page out", async () => {
+  const { fetcher } = fakeServer({
+    'GET /v1/admin/session': () =>
+      Response.json({ signedIn: true, username: 'luc' }),
+  });
+  const store = createAccountSession(
+    createAccountsClient('/v1/admin', fetcher),
+  );
+  await store.load();
+  const sent: Array<RequestInit | undefined> = [];
+  vi.stubGlobal('fetch', (_input: RequestInfo | URL, init?: RequestInit) => {
+    sent.push(init);
+    return Promise.resolve(
+      sent.length === 1
+        ? Response.json({ ok: true })
+        : Response.json({ message: 'no' }, { status: 401 }),
+    );
+  });
+  onTestFinished(() => {
+    vi.unstubAllGlobals();
+  });
+
+  const read = await store.fetch('/v1/admin/monitor/status');
+  const stillIn = store.get().session?.signedIn;
+  const refused = await store.fetch('/v1/admin/monitor/logs', {
+    method: 'GET',
+  });
+
+  expect([read.status, stillIn]).toStrictEqual([200, true]);
+  expect(sent).toStrictEqual([
+    { credentials: 'same-origin' },
+    { credentials: 'same-origin', method: 'GET' },
+  ]);
+  expect(refused.status).toBe(401);
+  expect(store.get()).toStrictEqual({
+    session: { signedIn: false, username: null },
+    notice: 'The session has ended: sign in again.',
+  });
+});
+
+test('a sign-out the server does not answer asks it where things stand', async () => {
+  let signedIn = true;
+  const { fetcher, asked } = fakeServer({
+    'GET /v1/admin/session': () =>
+      Response.json({ signedIn, username: signedIn ? 'luc' : null }),
+    'POST /v1/admin/logout': () => {
+      signedIn = false;
+      return new Response('Bad gateway', { status: 502 });
+    },
+  });
+  const store = createAccountSession(
+    createAccountsClient('/v1/admin', fetcher),
+  );
+  await store.load();
+
+  await store.signOut();
+
+  expect(asked.map((each) => `${each.method} ${each.url}`)).toStrictEqual([
+    'GET /v1/admin/session',
+    'POST /v1/admin/logout',
+    'GET /v1/admin/session',
+  ]);
+  expect(store.get()).toStrictEqual({
+    session: { signedIn: false, username: null },
+    notice: null,
+  });
+});
+
+test('a refusal with no message names its status, and an unreachable server reads as signed out', async () => {
+  const store = createAccountSession(
+    createAccountsClient('/v1/admin', unreachable),
+  );
+
+  await store.load();
+
+  await expect(
+    messageOf(new Response('<html>busy</html>', { status: 503 })),
+  ).resolves.toBe('the server answered 503');
+  await expect(
+    messageOf(Response.json({ message: '' }, { status: 500 })),
+  ).resolves.toBe('the server answered 500');
+  expect(store.get().session).toStrictEqual({
+    signedIn: false,
+    username: null,
+  });
 });
