@@ -1,6 +1,6 @@
 {
   "name": "service-accounts-frontend",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "React and Blueprint pages for the service-accounts-backend routes: the sign-in form, a gate in front of the operator's pages, the Accounts page, and the account menu of the bar.",
   "keywords": [
     "accounts",
