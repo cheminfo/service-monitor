@@ -3,11 +3,13 @@ import { join } from 'node:path';
 
 import { expect, test } from 'vitest';
 
-test('the contract is the backend’s, byte for byte', () => {
-  const here = readFileSync(join(import.meta.dirname, '../types.ts'));
-  const backend = readFileSync(
-    join(import.meta.dirname, '../../../accounts-backend/src/types.ts'),
-  );
+test('the contract and its rules are the backend’s, byte for byte', () => {
+  for (const file of ['types.ts', 'rules.ts']) {
+    const here = readFileSync(join(import.meta.dirname, '..', file));
+    const backend = readFileSync(
+      join(import.meta.dirname, '../../../accounts-backend/src', file),
+    );
 
-  expect(here.equals(backend)).toBe(true);
+    expect([file, here.equals(backend)]).toStrictEqual([file, true]);
+  }
 });

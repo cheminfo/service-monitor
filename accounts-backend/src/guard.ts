@@ -2,6 +2,9 @@ import { fastifyCookie } from '@fastify/cookie';
 import type { FastifyReply, FastifyRequest } from 'fastify';
 
 import { isSameOrigin } from './isSameOrigin.ts';
+import { refuse } from './refuse.ts';
+import type { AccountRefusal, AccountRole } from './rules.ts';
+import { roleAllows } from './rules.ts';
 import { sameSecret } from './sameSecret.ts';
 import type { Sessions } from './sessions.ts';
 import type { AccountRow, AccountStore } from './store/AccountStore.ts';
@@ -13,6 +16,16 @@ declare module 'fastify' {
      * operator's token let it through.
      */
     signedInAccount: AccountRow | null;
+  }
+
+  interface FastifyContextConfig {
+    /**
+     * The role a route of a protected scope needs, when it needs more than
+     * the scope: `config: { accountRole: 'write' }`. It never lowers the
+     * scope's own.
+     * @default the role the scope was protected with
+     */
+    accountRole?: AccountRole;
   }
 }
 
@@ -35,51 +48,55 @@ export interface AccountsContext {
 export interface SignedIn {
   /** The account signed in, or null when the operator's token was sent. */
   account: AccountRow | null;
+  /** What it may do: `admin` for the operator's token. */
+  role: AccountRole;
 }
 
 /**
  * The hook that lets the operator's token through, and the requests of an
- * account signed in, and refuses every other. A session changes nothing from
- * another site's page.
+ * account signed in whose role is high enough, and refuses every other: 401
+ * when nobody is signed in, 403 below the role. A session changes nothing
+ * from another site's page.
  * @param context - the accounts, the sessions and the operator's token
+ * @param role - the role every route of the scope needs at least
  * @returns the `onRequest` hook
  */
-export function createGuard(context: AccountsContext) {
+export function createGuard(context: AccountsContext, role: AccountRole) {
   return async function guard(
     request: FastifyRequest,
     reply: FastifyReply,
   ): Promise<FastifyReply | undefined> {
+    const needed = strongerRole(role, request.routeOptions.config.accountRole);
     const identity = await identify(context, request);
-    if (identity.status === 'token' || identity.status === 'account') {
-      request.signedInAccount =
-        identity.status === 'account' ? identity.account : null;
+    if (identity.status === 'token') {
+      request.signedInAccount = null;
       return undefined;
+    }
+    if (identity.status === 'account') {
+      const { account } = identity;
+      if (roleAllows(account.role, needed)) {
+        request.signedInAccount = account;
+        return undefined;
+      }
+      request.log.warn(
+        { clientIp: request.ip, username: account.username, needed },
+        'refused an account whose role is too low',
+      );
+      return refuse(reply, 403, 'roleTooLow');
     }
     if (identity.status === 'elsewhere') {
       request.log.warn(
         { clientIp: request.ip, origin: request.headers.origin },
-        'refused an operator change from another site',
+        'refused a change asked from another site',
       );
-      return reply.code(403).send({
-        statusCode: 403,
-        error: 'Forbidden',
-        message: 'the operator changes things from this site’s own pages',
-      });
+      return refuse(reply, 403, 'changeElsewhere');
     }
-
-    request.log.warn({ clientIp: request.ip }, 'refused an operator request');
-    return reply
-      .code(401)
-      .header('www-authenticate', 'Bearer')
-      .send({
-        statusCode: 401,
-        error: 'Unauthorized',
-        message: refusalOf(
-          identity.token,
-          identity.session,
-          context.adminToken,
-        ),
-      });
+    request.log.warn({ clientIp: request.ip }, 'refused a request signed out');
+    return refuse(
+      reply.header('www-authenticate', 'Bearer'),
+      401,
+      refusalOf(identity.token, identity.session, context.adminToken),
+    );
   };
 }
 
@@ -96,8 +113,10 @@ export async function signedInOf(
   request: FastifyRequest,
 ): Promise<SignedIn | null> {
   const identity = await identify(context, request);
-  if (identity.status === 'token') return { account: null };
-  if (identity.status === 'account') return { account: identity.account };
+  if (identity.status === 'token') return { account: null, role: 'admin' };
+  if (identity.status === 'account') {
+    return { account: identity.account, role: identity.account.role };
+  }
   return null;
 }
 
@@ -118,6 +137,19 @@ export function sessionCookie(
   const header = request.headers.cookie;
   if (header === undefined) return undefined;
   return fastifyCookie.parse(header)[cookieName];
+}
+
+/**
+ * The higher of two roles, for a route asking more than the scope it is in.
+ * @param floor - the role the whole scope needs
+ * @param asked - the role one route asks for, if any
+ * @returns `asked` when it is higher, else `floor`
+ */
+export function strongerRole(
+  floor: AccountRole,
+  asked: AccountRole | undefined,
+): AccountRole {
+  return asked !== undefined && !roleAllows(floor, asked) ? asked : floor;
 }
 
 /** What a request's credentials say, before anything is decided on them. */
@@ -159,10 +191,10 @@ async function identify(
   const session = sessionCookie(request, cookieName);
   if (token === undefined && session !== undefined) {
     const store = await context.store();
-    const account = await sessions.verify(session, (id) => store.byId(id));
-    if (account !== null) {
+    const verified = await sessions.verify(session, (id) => store.byId(id));
+    if (verified !== null) {
       if (!CHANGES.has(request.method) || isSameOrigin(request)) {
-        return { status: 'account', account };
+        return { status: 'account', account: verified.account };
       }
       return { status: 'elsewhere' };
     }
@@ -171,24 +203,24 @@ async function identify(
 }
 
 /**
- * Why a request was refused, in the words that say what to do about it.
+ * Why a request nobody signed in made was refused, as what to do about it.
  * @param token - the bearer token it sent, if any
  * @param session - the session cookie it sent, if any
  * @param adminToken - the operator's token, or undefined when none is set
- * @returns the message
+ * @returns the refusal
  */
 function refusalOf(
   token: string | undefined,
   session: string | undefined,
   adminToken: string | undefined,
-): string {
+): AccountRefusal {
   if (token !== undefined) {
     return adminToken === undefined || adminToken === ''
-      ? 'no operator token is set on this server: sign in instead'
-      : 'that is not the operator token';
+      ? 'noAdminToken'
+      : 'wrongToken';
   }
-  if (session !== undefined) return 'the session has ended: sign in again';
-  return 'this page is for the operator: sign in';
+  if (session !== undefined) return 'sessionEnded';
+  return 'signInRequired';
 }
 
 /**

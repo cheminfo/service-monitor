@@ -1,25 +1,39 @@
 import { afterAll, beforeAll, expect, test } from 'vitest';
 
 import type { TestApp } from './testApp.ts';
-import { ADMIN_TOKEN, COOKIE, HOST, PASSWORD, testApp } from './testApp.ts';
+import {
+  ADMIN_TOKEN,
+  BOB_PASSWORD,
+  COOKIE,
+  HOST,
+  PASSWORD,
+  sessionOf,
+  testApp,
+} from './testApp.ts';
 
 let site: TestApp;
-let session: string;
+let admin: string;
+let bob: string;
 
 beforeAll(async () => {
   site = await testApp();
-  const login = await site.app.inject({
-    method: 'POST',
-    url: '/v1/admin/login',
-    payload: { username: 'admin', password: PASSWORD },
-  });
-  session = login.cookies[0]?.value ?? '';
+  admin = await sessionOf(site.app, 'admin', PASSWORD);
+  bob = await sessionOf(site.app, 'bob', BOB_PASSWORD);
 });
 
 afterAll(async () => {
   await site.app.close();
 });
 
+/**
+ * Ask the open route who it was asked by.
+ * @param options - How to ask.
+ * @param options.method - The method.
+ * @param options.cookie - The session's cookie, if any.
+ * @param options.token - The bearer token, if any.
+ * @param options.origin - The page the request comes from, if any.
+ * @returns What the route answered.
+ */
 async function askedBy(options: {
   method?: 'GET' | 'POST';
   cookie?: string;
@@ -44,13 +58,19 @@ async function askedBy(options: {
   return response.json();
 }
 
-test('an open route is answered to everybody, and knows who is signed in', async () => {
+test('an open route is answered to everybody, and knows who is signed in with which role', async () => {
   await expect(askedBy({})).resolves.toStrictEqual({ by: 'nobody' });
-  await expect(askedBy({ cookie: session })).resolves.toStrictEqual({
+  await expect(askedBy({ cookie: admin })).resolves.toStrictEqual({
     by: 'admin',
+    role: 'admin',
+  });
+  await expect(askedBy({ cookie: bob })).resolves.toStrictEqual({
+    by: 'bob',
+    role: 'read',
   });
   await expect(askedBy({ token: ADMIN_TOKEN })).resolves.toStrictEqual({
     by: 'token',
+    role: 'admin',
   });
 });
 
@@ -65,12 +85,12 @@ test('a wrong token or a session that ended counts as nobody, and is never refus
 
 test('a session asking for a change from another site counts as nobody', async () => {
   await expect(
-    askedBy({ method: 'POST', cookie: session, origin: `https://${HOST}` }),
-  ).resolves.toStrictEqual({ by: 'admin' });
+    askedBy({ method: 'POST', cookie: admin, origin: `https://${HOST}` }),
+  ).resolves.toStrictEqual({ by: 'admin', role: 'admin' });
   await expect(
     askedBy({
       method: 'POST',
-      cookie: session,
+      cookie: admin,
       origin: 'https://elsewhere.example',
     }),
   ).resolves.toStrictEqual({ by: 'nobody' });

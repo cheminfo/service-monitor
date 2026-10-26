@@ -13,12 +13,21 @@ same way.
 
 - The HTTP contract is `backend/src/types.ts`, copied verbatim to
   `frontend/src/types.ts`. Change both in the same commit. The accounts'
-  contract is `accounts-backend/src/types.ts`, the same bytes as
-  `accounts-frontend/src/types.ts`; a frontend test fails while they differ.
+  contract is `accounts-backend/src/types.ts` and `accounts-backend/src/rules.ts`
+  (the roles, the refusal codes and their English, the username and password
+  rules), the same bytes as their copies in `accounts-frontend/src`; a frontend
+  test fails while they differ.
+- The accounts' words are react-cheminfo's chrome: every string of
+  `accounts-frontend` is an `account.*` key read with `useChromeT`, in every
+  locale catalog of react-cheminfo, never a literal here. A refusal's English
+  in `rules.ts` is the catalog's `account.refusal.<code>`; a frontend test
+  fails while they differ. A new refusal or a new word is a react-cheminfo
+  change first.
 - The accounts' store is `sqlite/accounts.sqlite`, its migrations recorded in
   `service_accounts_version`. `accounts-backend/src/store/migrate.ts` is the
   monitor's `migrate.ts` with that table name: fix a trap in one, fix it in
-  both.
+  both. Never edit a migration already released (001, 002): Postgrator checks
+  their checksums, and the stores of chembio and mz carry them.
 - Levels are pino's numbers (fifo-logger's too). The topic is the logger's
   `name`; a line with a `reqId` is `http`, whatever its name.
 - The store's migrations live in `backend/src/store/migrations` as
@@ -45,8 +54,13 @@ same way.
 
 ## Consumers
 
-The accounts: chembio.cheminfo.org, first; molecules.cheminfo.org, mz and
-literature still carry their own sign-in or token gate and move to it next.
+The accounts: chembio.cheminfo.org and mz.cheminfo.org on 0.1.0 from npm,
+with the routes under `/v1/admin`; drugs.cheminfo.org through `file:` links,
+under `/v1/account`. molecules.cheminfo.org and literature still carry their
+own sign-in or token gate and move to it next. Until react-cheminfo publishes
+the `account.*` keys (0.70.0), `accounts-frontend` links its checkout
+(`file:../../react-cheminfo`) and its Vitest dedupes React and Blueprint; put
+the registry range back once it is out, or the CI install fails.
 
 The monitor: molecules.cheminfo.org, chembio.cheminfo.org, mz.cheminfo.org and
 openalex (literature, on fat only), through `file:` links while unpublished. Each Vite

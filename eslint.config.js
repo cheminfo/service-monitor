@@ -11,11 +11,11 @@ export default defineConfig(
     rules: { 'new-cap': ['error', { capIsNew: false }] },
   },
   {
-    files: ['backend/**'],
+    files: ['backend/**', 'accounts-backend/**'],
     languageOptions: { globals: globals.nodeBuiltin },
   },
   {
-    files: ['frontend/**/*.{ts,tsx}'],
+    files: ['frontend/**/*.{ts,tsx}', 'accounts-frontend/**/*.{ts,tsx}'],
     extends: [react],
   },
 );

@@ -47,7 +47,12 @@ test('an opening that failed is tried again at the next call', async () => {
 test('a file shared with the host keeps the accounts under a version table of their own', async () => {
   const path = join(temporaryDirectory(), 'sqlite', 'db.sqlite');
   const store = await accountStoreOpener(path)();
-  store.insert({ username: 'luc', passwordHash: 'x', createdAt: 1 });
+  store.insert({
+    username: 'luc',
+    passwordHash: 'x',
+    role: 'read',
+    createdAt: 1,
+  });
   store.close();
 
   const database = new DatabaseSync(path);

@@ -7,11 +7,13 @@ import {
 } from '@blueprintjs/core';
 import type { SubmitEvent } from 'react';
 import { useState } from 'react';
+import { useChromeT } from 'react-cheminfo/ui';
 
 import { PasswordPair } from './PasswordPair.tsx';
 import type { AccountSessionStore } from './accountSession.ts';
-import { pairProblem } from './passwords.ts';
+import { passwordProblem } from './rules.ts';
 import type { Account } from './types.ts';
+import { useAccountFailureText } from './useAccountFailureText.ts';
 
 /** What the dialog setting another account's password needs. */
 export interface SetPasswordDialogProps {
@@ -31,43 +33,53 @@ export interface SetPasswordDialogProps {
  */
 export function SetPasswordDialog(props: SetPasswordDialogProps) {
   const { store, account, onClose } = props;
+  const t = useChromeT();
+  const text = useAccountFailureText();
   const [next, setNext] = useState('');
   const [repeat, setRepeat] = useState('');
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { id, username } = account;
 
-  async function submit(event: SubmitEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const problem = pairProblem(next, repeat);
+  async function set(): Promise<void> {
+    if (next !== repeat) {
+      setError(t('account.passwordsDiffer'));
+      return;
+    }
+    const problem = passwordProblem(next);
     if (problem !== null) {
-      setError(problem);
+      setError(text({ code: problem, status: 400, message: '' }));
       return;
     }
     setPending(true);
     setError(null);
     try {
       const outcome = await store.attempt(() =>
-        store.client.setPassword(account.id, next),
+        store.client.setPassword(id, next),
       );
       if (outcome.ok) onClose(true);
-      else setError(outcome.error);
+      else setError(text(outcome.failure));
     } finally {
       setPending(false);
     }
   }
 
+  function submit(event: SubmitEvent<HTMLFormElement>): void {
+    event.preventDefault();
+    void set();
+  }
+
   return (
     <Dialog
       isOpen
-      title={`Set the password of ${account.username}`}
+      title={t('account.setPasswordTitle', { username })}
       icon="key"
       onClose={() => onClose(false)}
     >
-      <form data-testid="set-password" onSubmit={(event) => void submit(event)}>
+      <form data-testid="set-password" onSubmit={submit}>
         <DialogBody className="accounts-form">
           <p className="accounts-note">
-            {account.username} is signed out everywhere, and signs in with this
-            password from now on.
+            {t('account.setPasswordNote', { username })}
           </p>
           <PasswordPair
             id="set-password"
@@ -76,7 +88,7 @@ export function SetPasswordDialog(props: SetPasswordDialogProps) {
             onNext={setNext}
             onRepeat={setRepeat}
           />
-          {error !== null && (
+          {error === null ? null : (
             <Callout intent="danger" compact role="alert">
               {error}
             </Callout>
@@ -87,13 +99,13 @@ export function SetPasswordDialog(props: SetPasswordDialogProps) {
             <>
               <Button
                 type="button"
-                text="Cancel"
+                text={t('confirm.cancel')}
                 onClick={() => onClose(false)}
               />
               <Button
                 type="submit"
                 intent="primary"
-                text="Set the password"
+                text={t('account.setPasswordSubmit')}
                 loading={pending}
                 disabled={next === '' || repeat === ''}
               />

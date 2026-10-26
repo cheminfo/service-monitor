@@ -1,18 +1,19 @@
+import process from 'node:process';
+
 import fastifyCookie from '@fastify/cookie';
 import fastifyRateLimit from '@fastify/rate-limit';
 import type {
   FastifyInstance,
   FastifyPluginAsync,
-  FastifyRequest,
   FastifySchema,
 } from 'fastify';
 
-import type { FirstAccountEnvironment } from './firstAccount.ts';
-import { firstAccount } from './firstAccount.ts';
-import type { AccountsContext, SignedIn } from './guard.ts';
+import { syncEnvAdmin } from './envAdmin.ts';
+import type { AccountsContext } from './guard.ts';
 import { createGuard, signedInOf } from './guard.ts';
 import { accountRoutes } from './routes/accountRoutes.ts';
 import type { DocumentedSchema } from './routes/documented.ts';
+import { passwordRoute } from './routes/passwordRoute.ts';
 import {
   ERROR_SCHEMA,
   SESSION_SCHEME,
@@ -20,108 +21,36 @@ import {
   accountSecuritySchemes,
 } from './routes/schemas.ts';
 import { sessionRoutes } from './routes/sessionRoutes.ts';
+import { isAccountRole } from './rules.ts';
+import type {
+  ProtectOptions,
+  ServiceAccounts,
+  ServiceAccountsOptions,
+} from './serviceAccountsTypes.ts';
+import { DEFAULT_SIGN_IN_LIMIT } from './serviceAccountsTypes.ts';
 import { createSessions } from './sessions.ts';
-import type { AccountStore } from './store/AccountStore.ts';
-import type { Account } from './types.ts';
-
-/** How many sign-ins one client may try per window, unless told otherwise. */
-const SIGN_IN_LIMIT = 10;
-
-/** The store, or what opens it. */
-export type AccountStoreSource =
-  | AccountStore
-  | Promise<AccountStore>
-  | (() => AccountStore | Promise<AccountStore>);
-
-/** What a service's accounts are made with. */
-export interface ServiceAccountsOptions {
-  /** The accounts; a function is called at every request. */
-  store: AccountStoreSource;
-  /**
-   * The cookie a session is kept in. One name per site, so two sites served
-   * from one host do not overwrite each other's: `chembio_operator`.
-   */
-  cookieName: string;
-  /**
-   * What sessions sign besides the account, so nothing else the same key
-   * signs can pass for one: the site's name.
-   */
-  purpose: string;
-  /**
-   * The key sessions are signed with, `COOKIE_SECRET`.
-   * @default undefined — a random key drawn at start, so a restart signs everybody out
-   */
-  cookieSecret?: string;
-  /**
-   * The operator's token, which a script sends as a bearer token instead of
-   * signing in, `ADMIN_TOKEN`.
-   * @default undefined — no bearer token is taken
-   */
-  adminToken?: string;
-  /**
-   * How many sign-ins one client may try per fifteen minutes.
-   * @default 10
-   */
-  signInLimit?: number;
-}
-
-/** A service's accounts: their routes, and the guard of the host's own. */
-export interface ServiceAccounts {
-  /**
-   * Signing in and out, open to everybody, and the accounts behind the guard.
-   * Register it with the prefix the operator's routes share, `/v1/admin`.
-   */
-  routes: FastifyPluginAsync;
-  /**
-   * Guard every route registered after it in a scope of the host's: the
-   * operator's token or an account signed in, `request.signedInAccount` set,
-   * and the two credentials named in the OpenAPI document.
-   * @param scope - an encapsulated scope, so the routes beside it stay open
-   */
-  protect: (scope: FastifyInstance) => void;
-  /**
-   * Who a request comes from, refusing nobody: an account signed in, the
-   * operator's token (`account` null), or null for anybody else. For a route
-   * open to everybody that shows more to the operator, which should then
-   * answer `Cache-Control: private`.
-   * @param request - the request
-   * @returns who, or null
-   */
-  signedIn: (request: FastifyRequest) => Promise<SignedIn | null>;
-  /**
-   * Create the first account when the store has none, from ADMIN_USERNAME and
-   * ADMIN_PASSWORD. Call it once, as the server starts.
-   * @param log - where to say what was done
-   * @param env - the environment to read
-   * @returns the account created, or null
-   */
-  ensureFirstAccount: (
-    log: FastifyInstance['log'],
-    env?: FirstAccountEnvironment,
-  ) => Promise<Account | null>;
-  /** The security schemes, for `components.securitySchemes` of the host. */
-  securitySchemes: ReturnType<typeof accountSecuritySchemes>;
-}
 
 /**
- * The accounts that sign in to a service's operator's pages.
+ * The accounts that sign in to a service.
  *
  * ```ts
  * const accounts = await createServiceAccounts({
  *   store: accountStoreOpener(accountStorePath(DATA_DIR)),
- *   cookieName: 'chembio_operator',
- *   purpose: 'chembio.cheminfo.org operator session',
- *   cookieSecret: process.env.COOKIE_SECRET,
- *   adminToken: process.env.ADMIN_TOKEN,
+ *   cookieName: 'drugs_session',
+ *   purpose: 'drugs.cheminfo.org session',
+ *   ...readAccountConfig(),
  * });
- * await fastify.register(accounts.routes, { prefix: '/v1/admin' });
+ * await fastify.register(accounts.routes, { prefix: '/v1/account' });
  * await fastify.register((scope) => {
- *   accounts.protect(scope);
- *   scope.get('/status', …);
- * }, { prefix: '/v1/admin' });
+ *   accounts.protect(scope, { role: 'write' });
+ *   scope.post('/samples', …);
+ * }, { prefix: '/v1' });
+ * await accounts.syncEnvAdmin(fastify.log);
  * ```
- * @param options - the store, the cookie, and the operator's token
- * @returns the routes and the guard
+ * @param options - the store, the cookie, the key and the operator's token
+ * @returns the routes, the guard and the rest
+ * @throws {Error} When `production` and no `cookieSecret` is given, saying
+ * how to set one.
  */
 export async function createServiceAccounts(
   options: ServiceAccountsOptions,
@@ -130,23 +59,39 @@ export async function createServiceAccounts(
     store,
     cookieName,
     purpose,
-    cookieSecret,
-    adminToken,
-    signInLimit = SIGN_IN_LIMIT,
+    signInLimit = DEFAULT_SIGN_IN_LIMIT,
+    production = process.env.NODE_ENV === 'production',
   } = options;
+  // Blank is unset: the compose files hand an unset variable over as ''.
+  const cookieSecret = blankless(options.cookieSecret);
+  const adminToken = blankless(options.adminToken);
+  if (production && cookieSecret === undefined) {
+    throw new Error(
+      'COOKIE_SECRET is unset, and in production every restart would then sign everybody out. Set it in .env to the output of `openssl rand -hex 32`, then restart.',
+    );
+  }
   const context: AccountsContext = {
     store: async () => (typeof store === 'function' ? store() : store),
     sessions: await createSessions({ purpose, secret: cookieSecret }),
     cookieName,
-    adminToken: adminToken?.trim() || undefined,
+    adminToken,
   };
-  const guard = createGuard(context);
+  let toldRandomKey = cookieSecret !== undefined;
 
-  function protect(scope: FastifyInstance): void {
+  function protect(
+    scope: FastifyInstance,
+    protectOptions: ProtectOptions = {},
+  ): void {
+    const { role = 'read' } = protectOptions;
+    if (!isAccountRole(role)) {
+      throw new Error(
+        `protect: "${String(role)}" is no role: read, write or admin`,
+      );
+    }
     if (!scope.hasRequestDecorator('signedInAccount')) {
       scope.decorateRequest('signedInAccount', null);
     }
-    scope.addHook('onRequest', guard);
+    scope.addHook('onRequest', createGuard(context, role));
     scope.addHook('onRoute', (route) => {
       const schema = route.schema as DocumentedSchema | undefined;
       route.schema = {
@@ -158,12 +103,19 @@ export async function createServiceAccounts(
         response: {
           ...(schema?.response as Record<string, unknown> | undefined),
           401: ERROR_SCHEMA,
+          403: ERROR_SCHEMA,
         },
       } as FastifySchema;
     });
   }
 
   const routes: FastifyPluginAsync = async (instance) => {
+    if (!toldRandomKey) {
+      toldRandomKey = true;
+      instance.log.warn(
+        'COOKIE_SECRET is unset: a random key signs the sessions, so a restart signs everybody out',
+      );
+    }
     if (!instance.hasReplyDecorator('setCookie')) {
       await instance.register(fastifyCookie);
     }
@@ -173,6 +125,7 @@ export async function createServiceAccounts(
     sessionRoutes(instance, context, signInLimit);
     await instance.register(async (guarded) => {
       protect(guarded);
+      passwordRoute(guarded, context);
       accountRoutes(guarded, context);
     });
   };
@@ -181,8 +134,17 @@ export async function createServiceAccounts(
     routes,
     protect,
     signedIn: (request) => signedInOf(context, request),
-    ensureFirstAccount: async (log, env) =>
-      firstAccount(await context.store(), log, env),
+    syncEnvAdmin: async (log, env) =>
+      syncEnvAdmin(await context.store(), log, env),
     securitySchemes: accountSecuritySchemes(cookieName),
   };
+}
+
+/**
+ * A setting as given, trimmed, or undefined when it says nothing.
+ * @param value - the setting
+ * @returns it, or undefined
+ */
+function blankless(value: string | undefined): string | undefined {
+  return value?.trim() || undefined;
 }

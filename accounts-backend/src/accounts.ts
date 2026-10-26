@@ -1,21 +1,31 @@
-import { hashPassword, verifyPassword } from './password.ts';
+import { hashPassword } from './password.ts';
+import type { AccountRefusal, AccountRole } from './rules.ts';
+import {
+  DEFAULT_ACCOUNT_ROLE,
+  REFUSAL_MESSAGES,
+  passwordProblem,
+  toUsername,
+  usernameProblem,
+} from './rules.ts';
+import { nowSeconds } from './signIn.ts';
 import type { AccountRow, AccountStore } from './store/AccountStore.ts';
-import type { Account } from './types.ts';
-
-/** The shortest username. */
-export const MIN_USERNAME_LENGTH = 3;
-
-/** The longest username, so it stays readable in the list of accounts. */
-export const MAX_USERNAME_LENGTH = 30;
-
-/** The longest password: PBKDF2 hashes anything, but nobody types more. */
-export const MAX_PASSWORD_LENGTH = 200;
-
-/** Letters, digits, dots, dashes and underscores, starting with no symbol. */
-const USERNAME_PATTERN = /^[\da-z][\d._a-z-]*$/;
+import type { AccountPatchBody } from './types.ts';
 
 /** A change to the accounts that cannot be made, with the reason. */
-export class AccountError extends Error {}
+export class AccountError extends Error {
+  override name = 'AccountError';
+  /** Why, as the code a page writes in its own language. */
+  readonly code: AccountRefusal;
+
+  /**
+   * A refusal, its message in English.
+   * @param code - why
+   */
+  constructor(code: AccountRefusal) {
+    super(REFUSAL_MESSAGES[code]);
+    this.code = code;
+  }
+}
 
 /** What an account is made of. */
 export interface NewAccount {
@@ -23,56 +33,17 @@ export interface NewAccount {
   username: string;
   /** Its password, in clear: only its hash is kept. */
   password: string;
-}
-
-/** A hash no password matches, so a sign-in as nobody costs a real check. */
-let decoyHash: Promise<string> | undefined;
-
-/**
- * A username as it is stored: trimmed and in lower case, so `Luc` and `luc`
- * are one account.
- * @param value - what was typed
- * @returns the username
- */
-export function toUsername(value: string): string {
-  return value.trim().toLowerCase();
-}
-
-/**
- * Why a username cannot be used.
- * @param username - the username, as {@link toUsername} writes it
- * @returns the reason, or null when it can be
- */
-export function usernameProblem(username: string): string | null {
-  if (
-    username.length < MIN_USERNAME_LENGTH ||
-    username.length > MAX_USERNAME_LENGTH
-  ) {
-    return `a username has ${MIN_USERNAME_LENGTH} to ${MAX_USERNAME_LENGTH} characters`;
-  }
-  if (!USERNAME_PATTERN.test(username)) {
-    return 'a username holds letters, digits, dots, dashes and underscores, and starts with a letter or a digit';
-  }
-  return null;
-}
-
-/**
- * Why a password cannot be used.
- * @param password - the password, in clear
- * @returns the reason, or null when it can be
- */
-export function passwordProblem(password: string): string | null {
-  if (password === '') return 'a password cannot be empty';
-  if (password.length > MAX_PASSWORD_LENGTH) {
-    return `a password has at most ${MAX_PASSWORD_LENGTH} characters`;
-  }
-  return null;
+  /**
+   * What it may do.
+   * @default 'read'
+   */
+  role?: AccountRole;
 }
 
 /**
  * Add an account.
  * @param store - the accounts
- * @param account - its username and password
+ * @param account - its username, its password and its role
  * @param now - when, in unix seconds
  * @returns the stored account
  * @throws {AccountError} When the username cannot be used or is taken, or the
@@ -88,41 +59,15 @@ export async function createAccount(
     usernameProblem(username) ?? passwordProblem(account.password);
   if (problem !== null) throw new AccountError(problem);
   if (store.byUsername(username) !== undefined) {
-    throw new AccountError(`there is already an account named ${username}`);
+    throw new AccountError('usernameTaken');
   }
   const id = store.insert({
     username,
     passwordHash: await hashPassword(account.password),
+    role: account.role ?? DEFAULT_ACCOUNT_ROLE,
     createdAt: now,
   });
   return required(store, id);
-}
-
-/**
- * Create the first account, when the store has none.
- * @param store - the accounts
- * @param account - its username and password
- * @param now - when, in unix seconds
- * @returns the account created, or null when there already was one
- * @throws {AccountError} When the username cannot be used, or the password is
- * empty or too long.
- */
-export async function ensureFirstAccount(
-  store: AccountStore,
-  account: NewAccount,
-  now: number = nowSeconds(),
-): Promise<AccountRow | null> {
-  if (store.count() > 0) return null;
-  const username = toUsername(account.username);
-  const problem =
-    usernameProblem(username) ?? passwordProblem(account.password);
-  if (problem !== null) throw new AccountError(problem);
-  const id = store.insertFirst({
-    username,
-    passwordHash: await hashPassword(account.password),
-    createdAt: now,
-  });
-  return id === undefined ? null : required(store, id);
 }
 
 /**
@@ -133,7 +78,8 @@ export async function ensureFirstAccount(
  * @param password - the new password, in clear
  * @param now - when, in unix seconds
  * @returns the account, or undefined when there is no such account
- * @throws {AccountError} When the password is empty or too long.
+ * @throws {AccountError} When the password is empty or too long, or the
+ * `.env` defines the account.
  */
 export async function setAccountPassword(
   store: AccountStore,
@@ -143,14 +89,77 @@ export async function setAccountPassword(
 ): Promise<AccountRow | undefined> {
   const problem = passwordProblem(password);
   if (problem !== null) throw new AccountError(problem);
-  if (store.byId(id) === undefined) return undefined;
-  store.setPassword(id, await hashPassword(password), now);
+  const account = store.byId(id);
+  if (account === undefined) return undefined;
+  if (account.envManaged) throw new AccountError('envManaged');
+  if (!store.setPassword(id, await hashPassword(password), now)) {
+    // Refused by the statement itself: the account went, or the `.env` took
+    // it over meanwhile.
+    if (store.byId(id) === undefined) return undefined;
+    throw new AccountError('envManaged');
+  }
   return required(store, id);
 }
 
 /**
- * Remove an account, never the last one: somebody must still be able to sign
- * in.
+ * Give an account a new role, which applies at its next request: a session
+ * reads its account again every time.
+ * @param store - the accounts
+ * @param id - the account's row id
+ * @param role - its new role
+ * @returns the account, or undefined when there is no such account
+ * @throws {AccountError} When the `.env` defines the account, or it is the
+ * last administrator and the role is not `admin`.
+ */
+export function setAccountRole(
+  store: AccountStore,
+  id: number,
+  role: AccountRole,
+): AccountRow | undefined {
+  const account = store.byId(id);
+  if (account === undefined) return undefined;
+  if (account.envManaged) throw new AccountError('envManaged');
+  if (!store.setRole(id, role)) {
+    // Refused by the statement itself: the last administrator, unless the
+    // account went meanwhile.
+    if (store.byId(id) === undefined) return undefined;
+    throw new AccountError('lastAdmin');
+  }
+  return required(store, id);
+}
+
+/**
+ * Change another account's password, its role, or both, as `PATCH /users/:id`
+ * asks. The password is checked before anything is written, so a refused one
+ * leaves the role as it was.
+ * @param store - the accounts
+ * @param id - the account's row id
+ * @param patch - its new password, its new role, or both
+ * @param now - when, in unix seconds
+ * @returns the account, or undefined when there is no such account
+ * @throws {AccountError} When the password cannot be used, the `.env` defines
+ * the account, or it is the last administrator and the role is not `admin`.
+ */
+export async function updateAccount(
+  store: AccountStore,
+  id: number,
+  patch: AccountPatchBody,
+  now: number = nowSeconds(),
+): Promise<AccountRow | undefined> {
+  const { password, role } = patch;
+  const problem = password === undefined ? null : passwordProblem(password);
+  if (problem !== null) throw new AccountError(problem);
+  let account =
+    role === undefined ? store.byId(id) : setAccountRole(store, id, role);
+  if (account !== undefined && password !== undefined) {
+    account = await setAccountPassword(store, id, password, now);
+  }
+  return account;
+}
+
+/**
+ * Remove an account: never the last administrator, so somebody can still
+ * manage the accounts, and never the one the `.env` defines.
  * @param store - the accounts
  * @param id - the account's row id
  * @returns what was done
@@ -158,60 +167,12 @@ export async function setAccountPassword(
 export function removeAccount(
   store: AccountStore,
   id: number,
-): 'removed' | 'last' | 'missing' {
-  if (store.byId(id) === undefined) return 'missing';
-  return store.removeUnlessLast(id) ? 'removed' : 'last';
-}
-
-/**
- * The account a username and a password sign in to.
- *
- * A username nobody has costs a password check all the same, so the time an
- * answer takes does not say which usernames exist.
- * @param store - the accounts, where the sign-in is recorded
- * @param username - the username, as typed
- * @param password - the password, as typed
- * @param now - when, in unix seconds
- * @returns the account, or null when the pair is not one
- */
-export async function checkSignIn(
-  store: AccountStore,
-  username: string,
-  password: string,
-  now: number = nowSeconds(),
-): Promise<AccountRow | null> {
-  const account = store.byUsername(toUsername(username));
-  if (account === undefined) {
-    decoyHash ??= hashPassword(crypto.randomUUID());
-    await verifyPassword(password, await decoyHash);
-    return null;
-  }
-  if (!(await verifyPassword(password, account.passwordHash))) return null;
-  store.touchSignIn(account.id, now);
-  return { ...account, lastSignInAt: now };
-}
-
-/**
- * An account, as the routes list it.
- * @param row - the stored row
- * @returns the account, without its password hash
- */
-export function toAccount(row: AccountRow): Account {
-  return {
-    id: row.id,
-    username: row.username,
-    createdAt: row.createdAt,
-    passwordChangedAt: row.passwordChangedAt,
-    lastSignInAt: row.lastSignInAt,
-  };
-}
-
-/**
- * The current time, as the store keeps it.
- * @returns unix seconds
- */
-export function nowSeconds(): number {
-  return Math.floor(Date.now() / 1000);
+): 'removed' | 'missing' | 'lastAdmin' | 'envManaged' {
+  const account = store.byId(id);
+  if (account === undefined) return 'missing';
+  if (account.envManaged) return 'envManaged';
+  if (store.removeUnlessLastAdmin(id)) return 'removed';
+  return store.byId(id) === undefined ? 'missing' : 'lastAdmin';
 }
 
 /**

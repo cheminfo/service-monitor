@@ -1,10 +1,12 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 
-import { MAX_PASSWORD_LENGTH, checkSignIn } from '../accounts.ts';
 import type { AccountsContext } from '../guard.ts';
 import { sessionCookie } from '../guard.ts';
 import { isSameOrigin } from '../isSameOrigin.ts';
-import { SESSION_SECONDS } from '../sessions.ts';
+import { refuse } from '../refuse.ts';
+import { MAX_PASSWORD_LENGTH, REFUSAL_MESSAGES } from '../rules.ts';
+import { SESSION_SECONDS, shouldRenew } from '../sessions.ts';
+import { checkSignIn } from '../signIn.ts';
 import type { AccountRow } from '../store/AccountStore.ts';
 import type { AccountSession, SignInBody } from '../types.ts';
 
@@ -32,26 +34,39 @@ export function sessionRoutes(
     {
       schema: documented({
         summary: 'Whether this browser is signed in',
+        description:
+          'A session signed in more than a day ago comes back with a new cookie, valid for 400 days again: somebody who keeps coming back is never asked to sign in again.',
         response: { 200: SESSION_SCHEMA },
       }),
     },
     async (request, reply) => {
       const store = await context.store();
-      const account = await context.sessions.verify(
+      const session = await context.sessions.verify(
         sessionCookie(request, context.cookieName),
         (id) => store.byId(id),
       );
-      return reply.header('cache-control', 'no-store').send(sessionOf(account));
+      if (session !== null && shouldRenew(session)) {
+        return sendSession(request, reply, context, session.account);
+      }
+      return reply
+        .header('cache-control', 'no-store')
+        .send(sessionOf(session?.account ?? null));
     },
   );
 
   fastify.post<{ Body: SignInBody }>(
     '/login',
     {
-      config: { rateLimit: { max: signInLimit, timeWindow: '15 minutes' } },
+      config: {
+        rateLimit: {
+          max: signInLimit,
+          timeWindow: '15 minutes',
+          errorResponseBuilder: tooManyAttempts,
+        },
+      },
       schema: documented({
         summary: 'Sign in',
-        description: `Checks the username and password of an account, and answers with a session cookie that lasts 8 hours. ${signInLimit} attempts per client every 15 minutes.`,
+        description: `Checks the username and password of an account, and answers with a session cookie that lasts 400 days. ${signInLimit} attempts per client every 15 minutes.`,
         body: {
           type: 'object',
           required: ['username', 'password'],
@@ -69,13 +84,7 @@ export function sessionRoutes(
       }),
     },
     async (request, reply) => {
-      if (!isSameOrigin(request)) {
-        return refuse(
-          reply,
-          403,
-          'signing in happens on this site’s own pages',
-        );
-      }
+      if (!isSameOrigin(request)) return refuse(reply, 403, 'signInElsewhere');
       const { username, password } = request.body;
       const account = await checkSignIn(
         await context.store(),
@@ -87,7 +96,7 @@ export function sessionRoutes(
           { clientIp: request.ip, username },
           'refused a sign-in',
         );
-        return refuse(reply, 401, 'wrong username or password');
+        return refuse(reply, 401, 'wrongCredentials');
       }
       request.log.info(
         { clientIp: request.ip, username: account.username },
@@ -108,13 +117,7 @@ export function sessionRoutes(
       }),
     },
     async (request, reply) => {
-      if (!isSameOrigin(request)) {
-        return refuse(
-          reply,
-          403,
-          'signing out happens on this site’s own pages',
-        );
-      }
+      if (!isSameOrigin(request)) return refuse(reply, 403, 'signOutElsewhere');
       return reply
         .clearCookie(context.cookieName, cookieAttributes(request))
         .header('cache-control', 'no-store')
@@ -147,27 +150,6 @@ export async function sendSession(
 }
 
 /**
- * Answer with a refusal, in the shape every route refuses with.
- * @param reply - where it goes
- * @param statusCode - 400, 401, 403 or 404
- * @param message - why, in lower case, to be quoted
- * @returns the reply, sent
- */
-export function refuse(
-  reply: FastifyReply,
-  statusCode: 400 | 401 | 403 | 404,
-  message: string,
-): FastifyReply {
-  const error = {
-    400: 'Bad Request',
-    401: 'Unauthorized',
-    403: 'Forbidden',
-    404: 'Not Found',
-  }[statusCode];
-  return reply.code(statusCode).send({ statusCode, error, message });
-}
-
-/**
  * The attributes the session cookie is set and cleared with: never readable
  * by a script, never sent from another site, and only over HTTPS when the page
  * came over it — behind a proxy, only once the host trusts it.
@@ -189,5 +171,21 @@ function cookieAttributes(request: FastifyRequest) {
  * @returns the answer
  */
 function sessionOf(account: AccountRow | null): AccountSession {
-  return { signedIn: account !== null, username: account?.username ?? null };
+  return {
+    signedIn: account !== null,
+    username: account?.username ?? null,
+    role: account?.role ?? null,
+  };
+}
+
+/**
+ * The refusal of a client that tried too many sign-ins: thrown by the rate
+ * limit, and answered by Fastify with the code beside the message.
+ * @returns the error
+ */
+function tooManyAttempts(): Error {
+  return Object.assign(new Error(REFUSAL_MESSAGES.tooManyAttempts), {
+    statusCode: 429,
+    code: 'tooManyAttempts',
+  });
 }

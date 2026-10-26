@@ -1,8 +1,16 @@
 import { fromHex, toHex } from './hex.ts';
 import type { AccountRow } from './store/AccountStore.ts';
 
-/** How long a session lasts once signed in, in seconds: a working day. */
-export const SESSION_SECONDS = 8 * 60 * 60;
+/**
+ * How long a session lasts once signed in, in seconds: 400 days, the longest
+ * a browser keeps a cookie (Chrome caps it there, as RFC 6265bis asks). With
+ * the renewal on `GET /session`, somebody who keeps coming back is never
+ * asked to sign in again.
+ */
+export const SESSION_SECONDS = 400 * 24 * 60 * 60;
+
+/** How old a session is before `GET /session` hands out a fresh one: a day. */
+export const RENEW_AFTER_SECONDS = 24 * 60 * 60;
 
 /** A session as its cookie carries it: the account, the expiry, the HMAC. */
 const SESSION_VALUE =
@@ -22,6 +30,14 @@ export interface SessionsOptions {
   secret?: string;
 }
 
+/** A session that verified, and when it ends. */
+export interface VerifiedSession {
+  /** The account it is for, read again from the store. */
+  account: AccountRow;
+  /** When it ends, in unix seconds. */
+  expiresAt: number;
+}
+
 /** Opens sessions, and tells a live one from anything else. */
 export interface Sessions {
   /**
@@ -32,26 +48,27 @@ export interface Sessions {
    */
   open: (account: AccountRow, now?: number) => Promise<string>;
   /**
-   * The account a cookie carries a live session of.
+   * The live session a cookie carries.
    * @param value - the cookie's value, if any
    * @param findAccount - reads an account by its id
    * @param now - when, in milliseconds
-   * @returns the account, or null
+   * @returns the session, or null
    */
   verify: (
     value: string | undefined,
     findAccount: (id: number) => AccountRow | undefined,
     now?: number,
-  ) => Promise<AccountRow | null>;
+  ) => Promise<VerifiedSession | null>;
 }
 
 /**
  * The sessions of the accounts.
  *
- * A session is stateless: an account, an expiry, and an HMAC-SHA256 over both
- * and over the account's password hash. The server keeps nothing, so a session
- * outlives a restart only when `secret` is set; changing the password, or
- * removing the account, ends every session it had.
+ * A session is stateless: an account, an expiry, and an HMAC-SHA256 over
+ * both, the site's `purpose` and the account's password hash. The server
+ * keeps nothing, so a session outlives a restart only when `secret` is set;
+ * changing the password, or removing the account, ends every session it had.
+ * A session signed for any shorter time verifies the same way.
  * @param options - what sessions are signed with
  * @returns the sessions
  */
@@ -101,9 +118,24 @@ export async function createSessions(
         fromHex(groups.signature),
         signed(purpose, account, expiresAt),
       );
-      return valid ? account : null;
+      return valid ? { account, expiresAt } : null;
     },
   };
+}
+
+/**
+ * Whether a session is old enough to be handed out again: signed in more than
+ * {@link RENEW_AFTER_SECONDS} ago.
+ * @param session - the session
+ * @param now - when, in milliseconds
+ * @returns true once it is
+ */
+export function shouldRenew(
+  session: VerifiedSession,
+  now: number = Date.now(),
+): boolean {
+  const remaining = session.expiresAt - Math.floor(now / 1000);
+  return remaining < SESSION_SECONDS - RENEW_AFTER_SECONDS;
 }
 
 /**

@@ -3,10 +3,9 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 
-import type { FastifyBaseLogger, FastifyRequest } from 'fastify';
+import type { FastifyRequest } from 'fastify';
 import { expect, onTestFinished, test } from 'vitest';
 
-import { firstAccount } from '../firstAccount.ts';
 import { fromHex, toHex } from '../hex.ts';
 import { isSameOrigin } from '../isSameOrigin.ts';
 import { sameSecret } from '../sameSecret.ts';
@@ -74,17 +73,4 @@ test('a store file that cannot be migrated is closed again and the error thrown'
       .all()
       .map((row) => row.name),
   ).toStrictEqual(['accounts']);
-});
-
-test('a blank ADMIN_USERNAME is the default one', async () => {
-  const store = await AccountStore.open(':memory:');
-  onTestFinished(() => store.close());
-  const log = { info: () => undefined } as unknown as FastifyBaseLogger;
-
-  const created = await firstAccount(store, log, {
-    ADMIN_USERNAME: ' '.repeat(3),
-    ADMIN_PASSWORD: 'a password',
-  });
-
-  expect(created?.username).toBe('admin');
 });

@@ -1,4 +1,5 @@
 import { FormGroup, InputGroup } from '@blueprintjs/core';
+import { useChromeT } from 'react-cheminfo/ui';
 
 /**
  * A new password, typed twice.
@@ -18,9 +19,11 @@ export function PasswordPair(props: {
   onRepeat: (value: string) => void;
 }) {
   const { id, next, repeat, onNext, onRepeat } = props;
+  const t = useChromeT();
+
   return (
     <>
-      <FormGroup label="New password" labelFor={id}>
+      <FormGroup label={t('account.newPassword')} labelFor={id}>
         <InputGroup
           id={id}
           type="password"
@@ -29,7 +32,7 @@ export function PasswordPair(props: {
           onValueChange={onNext}
         />
       </FormGroup>
-      <FormGroup label="New password, again" labelFor={`${id}-repeat`}>
+      <FormGroup label={t('account.repeatPassword')} labelFor={`${id}-repeat`}>
         <InputGroup
           id={`${id}-repeat`}
           type="password"

@@ -5,8 +5,17 @@ export type SecurityRequirement = Record<string, string[]>;
 
 /** A route's schema, with what the OpenAPI document reads besides validation. */
 export type DocumentedSchema = FastifySchema & {
+  /** One line naming what the route does. */
   summary: string;
+  /**
+   * What the summary leaves out.
+   * @default undefined
+   */
   description?: string;
+  /**
+   * The credentials the route takes.
+   * @default undefined — those of the guard, or none for an open route
+   */
   security?: SecurityRequirement[];
 };
 

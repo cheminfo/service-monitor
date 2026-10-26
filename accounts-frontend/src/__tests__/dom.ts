@@ -43,25 +43,29 @@ export async function settle(): Promise<void> {
 }
 
 /**
- * Type a value into a field the way React hears it: through the native
- * setter, then an `input` event.
+ * Type a value into a field, or pick it in a select, the way React hears it:
+ * through the native setter, then an `input` or a `change` event.
  * @param input - the field
  * @param value - what is typed
  */
 export async function type(
-  input: HTMLInputElement | null,
+  input: HTMLInputElement | HTMLSelectElement | null,
   value: string,
 ): Promise<void> {
   if (input === null) throw new Error('there is no such field');
+  const select = input instanceof HTMLSelectElement;
   // React tracks the value it last set, so a plain assignment would read as
   // no change at all.
   await act(async () => {
     Object.getOwnPropertyDescriptor(
-      HTMLInputElement.prototype,
+      select ? HTMLSelectElement.prototype : HTMLInputElement.prototype,
       'value',
     )?.set?.call(input, value);
-    input.dispatchEvent(new Event('input', { bubbles: true }));
+    input.dispatchEvent(
+      new Event(select ? 'change' : 'input', { bubbles: true }),
+    );
   });
+  await settle();
 }
 
 /**

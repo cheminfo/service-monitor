@@ -6,18 +6,16 @@ import { createAccountSession } from '../accountSession.ts';
 import { createAccountsClient } from '../accountsClient.ts';
 
 import { click, mount, settle } from './dom.ts';
-import { fakeServer } from './fakeServer.ts';
+import { API, fakeServer } from './fakeServer.ts';
 
 /**
  * The account menu, on a session already read from a fake server.
- * @param signedIn - who is signed in, if anybody
- * @returns the bar entry, the server, and what signing out called
+ * @param signedIn - Who is signed in, if anybody.
+ * @returns The bar entry, the server, and what the menu called.
  */
 async function menu(signedIn?: string) {
   const server = fakeServer({ signedIn });
-  const store = createAccountSession(
-    createAccountsClient('/v1/admin', server.fetcher),
-  );
+  const store = createAccountSession(createAccountsClient(API, server.fetcher));
   await store.load();
   const onSignedOut = vi.fn();
   const onAccounts = vi.fn();
@@ -25,7 +23,8 @@ async function menu(signedIn?: string) {
     <AccountMenu
       store={store}
       onSignedOut={onSignedOut}
-      items={[
+      items={[{ id: 'password', label: 'Your password', href: '/password' }]}
+      adminItems={[
         {
           id: 'accounts',
           label: 'Accounts',
@@ -40,7 +39,7 @@ async function menu(signedIn?: string) {
 
 /**
  * The items of the menu the account opens, in their order.
- * @returns their text
+ * @returns Their text.
  */
 function menuItems(): string[] {
   return [...document.querySelectorAll('.account-menu .bp6-menu-item')].map(
@@ -54,7 +53,7 @@ test('nobody signed in, the bar shows no account at all', async () => {
   expect(host.innerHTML).toBe('');
 });
 
-test('the account is its initials, and opens on its name, its pages and Sign out', async () => {
+test('an administrator opens its name, its role, its pages, the admin pages and Sign out', async () => {
   const { host, onAccounts } = await menu('luc');
 
   const trigger = host.querySelector('button.account-button');
@@ -64,14 +63,26 @@ test('the account is its initials, and opens on its name, its pages and Sign out
 
   await click(trigger);
 
-  expect(document.querySelector('.account-menu__name')?.textContent).toBe(
-    'luc',
-  );
-  expect(menuItems()).toStrictEqual(['Accounts', 'Sign out']);
+  expect([
+    document.querySelector('.account-menu__name')?.textContent,
+    document.querySelector('.account-menu__detail')?.textContent,
+  ]).toStrictEqual(['luc', 'Administrator']);
+  expect(menuItems()).toStrictEqual(['Your password', 'Accounts', 'Sign out']);
 
-  await click(document.querySelector('.account-menu a.bp6-menu-item'));
+  await click(document.querySelector('.account-menu a[href="/accounts"]'));
 
   expect(onAccounts).toHaveBeenCalledOnce();
+});
+
+test('an account that is not an administrator sees no admin page', async () => {
+  const { host } = await menu('ada');
+
+  await click(host.querySelector('button.account-button'));
+
+  expect(document.querySelector('.account-menu__detail')?.textContent).toBe(
+    'Read and write',
+  );
+  expect(menuItems()).toStrictEqual(['Your password', 'Sign out']);
 });
 
 test('signing out asks the server, empties the bar and tells the site', async () => {
@@ -84,7 +95,7 @@ test('signing out asks the server, empties the bar and tells the site', async ()
   await click(signOut);
   await settle();
 
-  expect(server.asked.at(-1)?.url).toBe('/v1/admin/logout');
+  expect(server.asked.at(-1)?.url).toBe('/v1/account/logout');
   expect(host.querySelector('.account-button')).toBeNull();
   expect(onSignedOut).toHaveBeenCalledOnce();
 });

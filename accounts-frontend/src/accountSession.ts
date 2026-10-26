@@ -1,20 +1,34 @@
+import type { AccountFailure } from './accountFailure.ts';
+import { failureOf } from './accountFailure.ts';
 import type { AccountsClient } from './accountsClient.ts';
-import { AccountsRequestError, sentenceOf } from './accountsClient.ts';
+import { REFUSAL_MESSAGES } from './rules.ts';
 import type { AccountSession } from './types.ts';
 
 /** What an action the server may refuse comes back with. */
-export type Outcome<T> = { ok: true; value: T } | { ok: false; error: string };
+export type Outcome<T> =
+  { ok: true; value: T } | { ok: false; failure: AccountFailure };
 
 /** Where this browser stands, as the pages read it. */
 export interface AccountSessionState {
   /** What the server said, or null until it has. */
   session: AccountSession | null;
   /** Why signing in is asked again, once a session ended; else null. */
-  notice: string | null;
+  notice: AccountFailure | null;
 }
 
 /** Where a browser stands that is not signed in. */
-const SIGNED_OUT: AccountSession = { signedIn: false, username: null };
+const SIGNED_OUT: AccountSession = {
+  signedIn: false,
+  username: null,
+  role: null,
+};
+
+/** What a 401 from one of the site's own routes stands for. */
+const SESSION_ENDED: AccountFailure = {
+  code: 'sessionEnded',
+  status: 401,
+  message: REFUSAL_MESSAGES.sessionEnded,
+};
 
 /**
  * Where this browser stands, shared by every page of the site: the gate, the
@@ -25,6 +39,7 @@ const SIGNED_OUT: AccountSession = { signedIn: false, username: null };
  */
 export function createAccountSession(client: AccountsClient) {
   let state: AccountSessionState = { session: null, notice: null };
+  let loading: Promise<void> | undefined;
   const listeners = new Set<() => void>();
 
   function set(next: AccountSessionState): void {
@@ -32,8 +47,7 @@ export function createAccountSession(client: AccountsClient) {
     for (const listener of listeners) listener();
   }
 
-  /** Ask the server where this browser stands. */
-  async function load(): Promise<void> {
+  async function ask(): Promise<void> {
     try {
       set({ ...state, session: await client.session() });
     } catch {
@@ -42,15 +56,27 @@ export function createAccountSession(client: AccountsClient) {
   }
 
   /**
+   * Ask the server where this browser stands; a server that cannot be
+   * reached reads as signed out, so a gate shows its form. A call made while
+   * the server is being asked shares that question.
+   * @returns once it has answered
+   */
+  function load(): Promise<void> {
+    loading ??= ask().finally(() => {
+      loading = undefined;
+    });
+    return loading;
+  }
+
+  /**
    * Go back to signed out when the server says the session has ended.
    * @param error - what a request threw
    * @returns whether it was that
    */
   function endIfRefused(error: unknown): boolean {
-    if (!(error instanceof AccountsRequestError) || error.status !== 401) {
-      return false;
-    }
-    set({ session: SIGNED_OUT, notice: sentenceOf(error) });
+    const failure = failureOf(error);
+    if (failure.status !== 401) return false;
+    set({ session: SIGNED_OUT, notice: failure });
     return true;
   }
 
@@ -70,8 +96,14 @@ export function createAccountSession(client: AccountsClient) {
       listeners.add(listener);
       return () => listeners.delete(listener);
     },
-    /** Ask the server where this browser stands. */
     load,
+    /**
+     * Ask the server where this browser stands, unless it has said already:
+     * what a gate calls when it is drawn.
+     * @returns once it has answered
+     */
+    ensureLoaded: (): Promise<void> =>
+      state.session === null ? load() : Promise.resolve(),
     /**
      * Sign in.
      * @param username - as typed
@@ -87,7 +119,7 @@ export function createAccountSession(client: AccountsClient) {
         set({ session, notice: null });
         return { ok: true, value: session };
       } catch (error: unknown) {
-        return { ok: false, error: sentenceOf(error) };
+        return { ok: false, failure: failureOf(error) };
       }
     },
     /** Sign this browser out. */
@@ -119,11 +151,11 @@ export function createAccountSession(client: AccountsClient) {
         return { ok: true, value: await change() };
       } catch (error: unknown) {
         endIfRefused(error);
-        return { ok: false, error: sentenceOf(error) };
+        return { ok: false, failure: failureOf(error) };
       }
     },
     /**
-     * A fetch for the host's own operator routes, such as the monitor's
+     * A fetch for the host's own guarded routes, such as the monitor's
      * panels: the browser sends the cookie, and a 401 signs this browser out.
      * @param input - what to fetch
      * @param init - how
@@ -135,10 +167,7 @@ export function createAccountSession(client: AccountsClient) {
         ...init,
       });
       if (response.status === 401) {
-        set({
-          session: SIGNED_OUT,
-          notice: 'The session has ended: sign in again.',
-        });
+        set({ session: SIGNED_OUT, notice: SESSION_ENDED });
       }
       return response;
     },

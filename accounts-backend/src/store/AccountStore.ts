@@ -2,31 +2,22 @@ import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 
-import { TypedStatement } from './TypedStatement.ts';
+import type { AccountRole } from '../rules.ts';
+
+import type {
+  AccountInsert,
+  AccountRow,
+  EnvAdminWrite,
+  StoredAccountRow,
+} from './accountRows.ts';
+import { prepareAccountStatements } from './accountStatements.ts';
 import { migrate } from './migrate.ts';
 
-/** An account as the store holds it, password hash included. */
-export interface AccountRow {
-  id: number;
-  /** What it signs in with, in lower case. */
-  username: string;
-  /** `pbkdf2$sha512$<iterations>$<salt>$<hash>`, never sent to a client. */
-  passwordHash: string;
-  /** When it was added, in unix seconds. */
-  createdAt: number;
-  /** When its password last changed, in unix seconds. */
-  passwordChangedAt: number;
-  /** When it last signed in, in unix seconds, or null when never. */
-  lastSignInAt: number | null;
-}
-
-/** What a new account is stored with. */
-export interface AccountInsert {
-  username: string;
-  passwordHash: string;
-  /** In unix seconds; the password is changed at the same instant. */
-  createdAt: number;
-}
+export type {
+  AccountInsert,
+  AccountRow,
+  EnvAdminWrite,
+} from './accountRows.ts';
 
 /**
  * The accounts of a service, in one SQLite file every process may open. The
@@ -57,11 +48,11 @@ export class AccountStore {
   }
 
   readonly #db: DatabaseSync;
-  readonly #statements: ReturnType<typeof prepareStatements>;
+  readonly #statements: ReturnType<typeof prepareAccountStatements>;
 
   private constructor(database: DatabaseSync) {
     this.#db = database;
-    this.#statements = prepareStatements(database);
+    this.#statements = prepareAccountStatements(database);
   }
 
   /**
@@ -90,7 +81,7 @@ export class AccountStore {
     const rows = this.#statements.all.all();
     const accounts = new Array<AccountRow>(rows.length);
     for (let index = 0; index < rows.length; index++) {
-      accounts[index] = { ...(rows[index] as AccountRow) };
+      accounts[index] = plain(rows[index]) as AccountRow;
     }
     return accounts;
   }
@@ -113,33 +104,37 @@ export class AccountStore {
       account.username,
       account.passwordHash,
       account.createdAt,
+      account.role,
     );
     if (row === undefined) throw new Error('the account was not stored');
     return row.id;
   }
 
   /**
-   * Add the first account, and nothing once there is one, so two processes
-   * starting at once cannot both create it.
-   * @param account - what it is stored with
-   * @returns its row id, or undefined when there already was an account
-   */
-  insertFirst(account: AccountInsert): number | undefined {
-    return this.#statements.insertFirst.get(
-      account.username,
-      account.passwordHash,
-      account.createdAt,
-    )?.id;
-  }
-
-  /**
-   * Replace an account's password hash.
+   * Replace the password hash of an account the `.env` does not define.
    * @param id - the row id
    * @param passwordHash - the new hash
    * @param changedAt - when, in unix seconds
+   * @returns whether it was replaced
    */
-  setPassword(id: number, passwordHash: string, changedAt: number): void {
-    this.#statements.setPassword.run(passwordHash, changedAt, id);
+  setPassword(id: number, passwordHash: string, changedAt: number): boolean {
+    const result = this.#statements.setPassword.run(
+      passwordHash,
+      changedAt,
+      id,
+    );
+    return Number(result.changes) > 0;
+  }
+
+  /**
+   * Give an account the `.env` does not define a new role, unless that
+   * demotes the last administrator.
+   * @param id - the row id
+   * @param role - its new role
+   * @returns whether it was given
+   */
+  setRole(id: number, role: AccountRole): boolean {
+    return Number(this.#statements.setRole.run(role, id).changes) > 0;
   }
 
   /**
@@ -152,12 +147,48 @@ export class AccountStore {
   }
 
   /**
-   * Remove an account, unless it is the last one.
+   * Remove an account the `.env` does not define, unless it is the last
+   * administrator.
    * @param id - the row id
    * @returns whether it was removed
    */
-  removeUnlessLast(id: number): boolean {
-    return Number(this.#statements.removeUnlessLast.run(id).changes) > 0;
+  removeUnlessLastAdmin(id: number): boolean {
+    return Number(this.#statements.removeUnlessLastAdmin.run(id).changes) > 0;
+  }
+
+  /**
+   * Make one account the administrator the `.env` defines, in one
+   * transaction: created when missing, given the `admin` role and the hash,
+   * and the only account marked so.
+   * @param admin - its username and the hash to keep
+   * @returns its row id
+   */
+  writeEnvAdmin(admin: EnvAdminWrite): number {
+    this.#db.exec('BEGIN IMMEDIATE');
+    try {
+      const row = this.#statements.upsertEnvAdmin.get(
+        admin.username,
+        admin.passwordHash,
+        admin.at,
+      );
+      if (row === undefined) {
+        throw new Error('the administrator was not stored');
+      }
+      this.#statements.forgetEnvAdminsBut.run(row.id);
+      this.#db.exec('COMMIT');
+      return row.id;
+    } catch (error: unknown) {
+      this.#db.exec('ROLLBACK');
+      throw error;
+    }
+  }
+
+  /**
+   * Mark no account as defined by the `.env`, once it defines none.
+   * @returns how many were marked
+   */
+  forgetEnvAdmins(): number {
+    return Number(this.#statements.forgetEnvAdminsBut.run(0).changes);
   }
 
   /** Close the file. */
@@ -178,48 +209,12 @@ function applyPragmas(database: DatabaseSync): void {
 }
 
 /**
- * The statements of the store.
- * @param database - the connection
- * @returns them, by what they do
- */
-function prepareStatements(database: DatabaseSync) {
-  const prepare = <T extends object>(sql: string) =>
-    new TypedStatement<T>(database.prepare(sql));
-  return {
-    byId: prepare<AccountRow>('SELECT * FROM accounts WHERE id = ?'),
-    byUsername: prepare<AccountRow>(
-      'SELECT * FROM accounts WHERE username = ?',
-    ),
-    all: prepare<AccountRow>('SELECT * FROM accounts ORDER BY username'),
-    count: prepare<{ count: number }>('SELECT COUNT(*) AS count FROM accounts'),
-    insert: prepare<{ id: number }>(
-      `INSERT INTO accounts (username, passwordHash, createdAt, passwordChangedAt)
-       VALUES (?1, ?2, ?3, ?3)
-       RETURNING id`,
-    ),
-    insertFirst: prepare<{ id: number }>(
-      `INSERT INTO accounts (username, passwordHash, createdAt, passwordChangedAt)
-       SELECT ?1, ?2, ?3, ?3
-       WHERE NOT EXISTS (SELECT 1 FROM accounts)
-       RETURNING id`,
-    ),
-    setPassword: prepare(
-      'UPDATE accounts SET passwordHash = ?, passwordChangedAt = ? WHERE id = ?',
-    ),
-    touchSignIn: prepare('UPDATE accounts SET lastSignInAt = ? WHERE id = ?'),
-    removeUnlessLast: prepare(
-      `DELETE FROM accounts
-       WHERE id = ? AND (SELECT COUNT(*) FROM accounts) > 1`,
-    ),
-  };
-}
-
-/**
  * A row as a plain object: `node:sqlite` hands back null-prototype rows kept
  * in dictionary mode, slow to read and refused by `toStrictEqual`.
  * @param row - the row, if any
  * @returns a copy, or undefined
  */
-function plain(row: AccountRow | undefined): AccountRow | undefined {
-  return row === undefined ? undefined : { ...row };
+function plain(row: StoredAccountRow | undefined): AccountRow | undefined {
+  if (row === undefined) return undefined;
+  return { ...row, envManaged: row.envManaged === 1 };
 }

@@ -84,6 +84,7 @@
   gap: 1.25rem;
 }
 
+/* A phone scrolls the table within its panel, never the page sideways. */
 .accounts-scroll {
   overflow-x: auto;
 }
@@ -107,7 +108,8 @@
   vertical-align: top;
 }
 
-.accounts-table__you {
+/* The tags after a username: `you`, and `defined in .env`. */
+.accounts-table__tag {
   margin-left: 0.4rem;
 }
 
