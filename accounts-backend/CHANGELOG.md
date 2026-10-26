@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.2.0](https://github.com/cheminfo/service-monitor/compare/service-accounts-backend-v0.1.0...service-accounts-backend-v0.2.0) (2026-10-26)
+
+
+### ⚠ BREAKING CHANGES
+
+* COOKIE_SECRET is required in production, ADMIN_PASSWORD is authoritative at every start, and existing accounts become administrators.
+
+### Features
+
+* give service-accounts roles and sessions remembered for 400 days ([9cbcd64](https://github.com/cheminfo/service-monitor/commit/9cbcd643e1baec2b5504a7eb7a2e99525e169774))
+* tell an open route who is signed in, refusing nobody ([71d35ef](https://github.com/cheminfo/service-monitor/commit/71d35efc463873c87d83ae50a31fa5a3a6a476f8))
+
 ## 0.1.0 (2026-10-22)
 
 
