@@ -20,13 +20,11 @@ export type AccountStoreSource =
   | Promise<AccountStore>
   | (() => AccountStore | Promise<AccountStore>);
 
-/** What a service's accounts are made with. */
-export interface ServiceAccountsOptions {
-  /**
-   * The accounts: `accountStoreOpener(accountStorePath(DATA_DIR))`. A
-   * function is called at every request.
-   */
-  store: AccountStoreSource;
+/**
+ * What the sessions of both kinds of sign-in are made with: the accounts of
+ * `createServiceAccounts`, and the one password of `createSharedPassword`.
+ */
+export interface SessionOptions {
   /**
    * The cookie a session is kept in. One name per site, so two sites served
    * from one host do not overwrite each other's: `chembio_operator`.
@@ -59,6 +57,15 @@ export interface ServiceAccountsOptions {
    * @default process.env.NODE_ENV === 'production'
    */
   production?: boolean;
+}
+
+/** What a service's accounts are made with. */
+export interface ServiceAccountsOptions extends SessionOptions {
+  /**
+   * The accounts: `accountStoreOpener(accountStorePath(DATA_DIR))`. A
+   * function is called at every request.
+   */
+  store: AccountStoreSource;
 }
 
 /** How a scope of the host's is guarded. */

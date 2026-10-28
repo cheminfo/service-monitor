@@ -25,13 +25,22 @@ export async function checkSignIn(
 ): Promise<AccountRow | null> {
   const account = store.byUsername(toUsername(username));
   if (account === undefined) {
-    decoyHash ??= hashPassword(crypto.randomUUID());
-    await verifyPassword(password, await decoyHash);
+    await checkAgainstNobody(password);
     return null;
   }
   if (!(await verifyPassword(password, account.passwordHash))) return null;
   store.touchSignIn(account.id, now);
   return { ...account, lastSignInAt: now };
+}
+
+/**
+ * Check a password against a hash no password matches, so that refusing a
+ * sign-in nobody can pass takes as long as refusing a wrong password.
+ * @param password - the password, as typed
+ */
+export async function checkAgainstNobody(password: string): Promise<void> {
+  decoyHash ??= hashPassword(crypto.randomUUID());
+  await verifyPassword(password, await decoyHash);
 }
 
 /**

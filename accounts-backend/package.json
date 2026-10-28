@@ -1,7 +1,7 @@
 {
   "name": "service-accounts-backend",
   "version": "0.2.0",
-  "description": "Accounts that sign in to a Fastify service, as readers, writers or administrators: PBKDF2 passwords, 400-day signed session cookies, a SQLite store, the sign-in and account routes, a guard by role, and the administrator the .env defines.",
+  "description": "Accounts that sign in to a Fastify service, as readers, writers or administrators, or one password its operators share: PBKDF2 passwords, 400-day signed session cookies, a SQLite store, the sign-in and account routes, a guard by role, and the administrator the .env defines.",
   "keywords": [
     "accounts",
     "authentication",
@@ -13,7 +13,8 @@
   "license": "MIT",
   "type": "module",
   "exports": {
-    ".": "./lib/index.js"
+    ".": "./lib/index.js",
+    "./shared-password": "./lib/sharedPassword.js"
   },
   "files": [
     "lib",

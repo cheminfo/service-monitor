@@ -63,6 +63,54 @@ await accounts.syncEnvAdmin(fastify.log);
 List `accounts.securitySchemes` under `components.securitySchemes` of the
 host's `@fastify/swagger` document: every route names the credentials it takes.
 
+## One shared password
+
+A site with one operator and no usernames — a label printer manager, say —
+signs in with `createSharedPassword` from `service-accounts-backend/shared-password`
+instead. It never loads the accounts' store. The sessions, the guard, the
+`ADMIN_TOKEN`, the sign-in limit, the `Origin` check and the routes are the
+ones above, so moving such a site to accounts later changes this call alone.
+
+```ts
+import {
+  createSharedPassword,
+  readAccountConfig,
+} from 'service-accounts-backend/shared-password';
+
+const access = await createSharedPassword({
+  cookieName: 'zebra_session',
+  purpose: 'zebra-label-printer-manager session',
+  // The host keeps the hash, made by `hashPassword`, where it likes.
+  readPasswordHash: () => db.getPasswordHash.get()?.value,
+  writePasswordHash: (hash) => db.upsertPasswordHash.run(hash),
+  // A hash the site kept before: checked once, then kept as PBKDF2.
+  verifyLegacyHash: verifyScryptHash,
+  ...readAccountConfig(),
+});
+
+await fastify.register(access.routes, { prefix: '/v1/auth' });
+
+// Reads stay open to everybody; every change needs the password.
+await fastify.register(
+  async (scope) => {
+    access.protect(scope, { openReads: true });
+    scope.get('/printers', listPrinters);
+    scope.post('/printers', addPrinter);
+  },
+  { prefix: '/v1' },
+);
+```
+
+- **Routes**: `GET /session`, `POST /logout`, `POST /login` with
+  `{ password }`, and `POST /password` with `{ currentPassword, newPassword }`.
+  A session answers `{ signedIn, username: null, role: 'admin' }`.
+- **A session** signs the account id `0`, its expiry, the `purpose` and the
+  hash `readPasswordHash` returns, read again at every request: a new
+  password ends every session.
+- **No hash kept** means nobody signs in; the host seeds the first one.
+- **`protect(scope, { openReads })`**: `GET`, `HEAD` and `OPTIONS` pass for
+  everybody when `openReads` is true. `signedIn(request)` answers a boolean.
+
 ## Roles and the guard
 
 `read` reads, `write` also changes the data, `admin` also manages the

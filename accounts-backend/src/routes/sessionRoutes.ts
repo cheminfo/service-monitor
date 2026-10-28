@@ -1,6 +1,6 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 
-import type { AccountsContext } from '../guard.ts';
+import type { AccountsContext, SessionContext } from '../guard.ts';
 import { sessionCookie } from '../guard.ts';
 import { isSameOrigin } from '../isSameOrigin.ts';
 import { refuse } from '../refuse.ts';
@@ -29,41 +29,12 @@ export function sessionRoutes(
   context: AccountsContext,
   signInLimit: number,
 ): void {
-  fastify.get(
-    '/session',
-    {
-      schema: documented({
-        summary: 'Whether this browser is signed in',
-        description:
-          'A session signed in more than a day ago comes back with a new cookie, valid for 400 days again: somebody who keeps coming back is never asked to sign in again.',
-        response: { 200: SESSION_SCHEMA },
-      }),
-    },
-    async (request, reply) => {
-      const store = await context.store();
-      const session = await context.sessions.verify(
-        sessionCookie(request, context.cookieName),
-        (id) => store.byId(id),
-      );
-      if (session !== null && shouldRenew(session)) {
-        return sendSession(request, reply, context, session.account);
-      }
-      return reply
-        .header('cache-control', 'no-store')
-        .send(sessionOf(session?.account ?? null));
-    },
-  );
+  sessionStateRoutes(fastify, context);
 
   fastify.post<{ Body: SignInBody }>(
     '/login',
     {
-      config: {
-        rateLimit: {
-          max: signInLimit,
-          timeWindow: '15 minutes',
-          errorResponseBuilder: tooManyAttempts,
-        },
-      },
+      config: signInRateLimit(signInLimit),
       schema: documented({
         summary: 'Sign in',
         description: `Checks the username and password of an account, and answers with a session cookie that lasts 400 days. ${signInLimit} attempts per client every 15 minutes.`,
@@ -105,6 +76,41 @@ export function sessionRoutes(
       return sendSession(request, reply, context, account);
     },
   );
+}
+
+/**
+ * Say whether this browser is signed in, and sign it out: the same two routes
+ * whether the accounts are kept in a store or are one shared password.
+ * @param fastify - the scope, with cookies registered
+ * @param context - the sessions
+ */
+export function sessionStateRoutes(
+  fastify: FastifyInstance,
+  context: SessionContext,
+): void {
+  fastify.get(
+    '/session',
+    {
+      schema: documented({
+        summary: 'Whether this browser is signed in',
+        description:
+          'A session signed in more than a day ago comes back with a new cookie, valid for 400 days again: somebody who keeps coming back is never asked to sign in again.',
+        response: { 200: SESSION_SCHEMA },
+      }),
+    },
+    async (request, reply) => {
+      const session = await context.sessions.verify(
+        sessionCookie(request, context.cookieName),
+        context.findAccount,
+      );
+      if (session !== null && shouldRenew(session)) {
+        return sendSession(request, reply, context, session.account);
+      }
+      return reply
+        .header('cache-control', 'no-store')
+        .send(sessionOf(session?.account ?? null));
+    },
+  );
 
   fastify.post(
     '/logout',
@@ -137,7 +143,7 @@ export function sessionRoutes(
 export async function sendSession(
   request: FastifyRequest,
   reply: FastifyReply,
-  context: AccountsContext,
+  context: SessionContext,
   account: AccountRow,
 ): Promise<FastifyReply> {
   return reply
@@ -173,8 +179,25 @@ function cookieAttributes(request: FastifyRequest) {
 function sessionOf(account: AccountRow | null): AccountSession {
   return {
     signedIn: account !== null,
-    username: account?.username ?? null,
+    // The shared password signs in no account, so no username.
+    username:
+      account === null || account.username === '' ? null : account.username,
     role: account?.role ?? null,
+  };
+}
+
+/**
+ * The rate limit of a sign-in route.
+ * @param signInLimit - how many sign-ins one client may try per fifteen minutes
+ * @returns the route's `config`
+ */
+export function signInRateLimit(signInLimit: number) {
+  return {
+    rateLimit: {
+      max: signInLimit,
+      timeWindow: '15 minutes',
+      errorResponseBuilder: tooManyAttempts,
+    },
   };
 }
 

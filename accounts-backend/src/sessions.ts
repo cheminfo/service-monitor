@@ -56,7 +56,9 @@ export interface Sessions {
    */
   verify: (
     value: string | undefined,
-    findAccount: (id: number) => AccountRow | undefined,
+    findAccount: (
+      id: number,
+    ) => AccountRow | undefined | Promise<AccountRow | undefined>,
     now?: number,
   ) => Promise<VerifiedSession | null>;
 }
@@ -108,7 +110,7 @@ export async function createSessions(
       const expiresAt = Number(groups.expiresAt);
       const remaining = expiresAt * 1000 - now;
       if (remaining <= 0 || remaining > SESSION_SECONDS * 1000) return null;
-      const account = findAccount(Number(groups.accountId));
+      const account = await findAccount(Number(groups.accountId));
       if (account === undefined) return null;
       // `verify` compares in constant time, which a string comparison of two
       // signatures would not.

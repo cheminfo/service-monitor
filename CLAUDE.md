@@ -17,6 +17,12 @@ same way.
   (the roles, the refusal codes and their English, the username and password
   rules), the same bytes as their copies in `accounts-frontend/src`; a frontend
   test fails while they differ.
+- The accounts come in two kinds, and every site uses one of them, never a
+  sign-in of its own: `createServiceAccounts` (accounts in
+  `accounts.sqlite`) and `createSharedPassword` from
+  `service-accounts-backend/shared-password` (one password the host keeps, no
+  store). Both share the sessions, the guard and the session routes; a fix to
+  either is a fix to both.
 - The accounts' words are react-cheminfo's chrome: every string of
   `accounts-frontend` is an `account.*` key read with `useChromeT`, in every
   locale catalog of react-cheminfo, never a literal here. A refusal's English

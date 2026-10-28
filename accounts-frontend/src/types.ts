@@ -8,7 +8,7 @@ import type { AccountRefusal, AccountRole } from './rules.ts';
 export interface AccountSession {
   /** Whether this browser holds a live session. */
   signedIn: boolean;
-  /** The account signed in, else null. */
+  /** The account signed in, else null; always null for a shared password. */
   username: string | null;
   /** What the account signed in may do, else null. */
   role: AccountRole | null;
@@ -43,6 +43,11 @@ export interface AccountsResponse {
 /** What `POST /login` takes. */
 export interface SignInBody {
   username: string;
+  password: string;
+}
+
+/** What `POST /login` takes when the site signs in with a shared password. */
+export interface PasswordSignInBody {
   password: string;
 }
 

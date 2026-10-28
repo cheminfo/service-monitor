@@ -30,18 +30,32 @@ declare module 'fastify' {
 }
 
 /** The methods that change something. */
-const CHANGES = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
+export const CHANGES: ReadonlySet<string> = new Set([
+  'POST',
+  'PUT',
+  'PATCH',
+  'DELETE',
+]);
 
-/** What the guard and the routes share. */
-export interface AccountsContext {
-  /** The accounts. */
-  store: () => Promise<AccountStore>;
+/**
+ * What the guard and the session routes share, whether the accounts are kept
+ * in a store or are one shared password.
+ */
+export interface SessionContext {
+  /** The account a session names, read again at every request. */
+  findAccount: (id: number) => Promise<AccountRow | undefined>;
   /** What opens and checks sessions. */
   sessions: Sessions;
   /** The cookie a session is kept in. */
   cookieName: string;
   /** The operator's token, or undefined when none is taken. */
   adminToken: string | undefined;
+}
+
+/** What the guard and the routes of the accounts share. */
+export interface AccountsContext extends SessionContext {
+  /** The accounts. */
+  store: () => Promise<AccountStore>;
 }
 
 /** Who a request is let through for. */
@@ -59,13 +73,20 @@ export interface SignedIn {
  * from another site's page.
  * @param context - the accounts, the sessions and the operator's token
  * @param role - the role every route of the scope needs at least
+ * @param openReads - whether a request that changes nothing passes for
+ * everybody
  * @returns the `onRequest` hook
  */
-export function createGuard(context: AccountsContext, role: AccountRole) {
+export function createGuard(
+  context: SessionContext,
+  role: AccountRole,
+  openReads = false,
+) {
   return async function guard(
     request: FastifyRequest,
     reply: FastifyReply,
   ): Promise<FastifyReply | undefined> {
+    if (openReads && !CHANGES.has(request.method)) return undefined;
     const needed = strongerRole(role, request.routeOptions.config.accountRole);
     const identity = await identify(context, request);
     if (identity.status === 'token') {
@@ -109,7 +130,7 @@ export function createGuard(context: AccountsContext, role: AccountRole) {
  * @returns who, or null for nobody
  */
 export async function signedInOf(
-  context: AccountsContext,
+  context: SessionContext,
   request: FastifyRequest,
 ): Promise<SignedIn | null> {
   const identity = await identify(context, request);
@@ -174,10 +195,10 @@ type Identity =
  * @returns what they say
  */
 async function identify(
-  context: AccountsContext,
+  context: SessionContext,
   request: FastifyRequest,
 ): Promise<Identity> {
-  const { sessions, cookieName, adminToken } = context;
+  const { sessions, cookieName, adminToken, findAccount } = context;
   const token = bearerToken(request);
   if (
     adminToken !== undefined &&
@@ -190,8 +211,7 @@ async function identify(
 
   const session = sessionCookie(request, cookieName);
   if (token === undefined && session !== undefined) {
-    const store = await context.store();
-    const verified = await sessions.verify(session, (id) => store.byId(id));
+    const verified = await sessions.verify(session, findAccount);
     if (verified !== null) {
       if (!CHANGES.has(request.method) || isSameOrigin(request)) {
         return { status: 'account', account: verified.account };
