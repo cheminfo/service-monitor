@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.0](https://github.com/cheminfo/service-monitor/compare/service-accounts-frontend-v0.2.0...service-accounts-frontend-v0.3.0) (2026-10-28)
+
+
+### Features
+
+* **accounts-backend:** sign in with one shared password ([36373ce](https://github.com/cheminfo/service-monitor/commit/36373ce3af297cf1d2ba9121a44219c86d6aacb7))
+
 ## [0.2.0](https://github.com/cheminfo/service-monitor/compare/service-accounts-frontend-v0.1.0...service-accounts-frontend-v0.2.0) (2026-10-26)
 
 
