@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.0](https://github.com/cheminfo/service-monitor/compare/service-accounts-frontend-v0.3.0...service-accounts-frontend-v0.4.0) (2026-10-28)
+
+
+### Features
+
+* **accounts-frontend:** sign in with a shared password, and a session entry without the pages ([fcd1933](https://github.com/cheminfo/service-monitor/commit/fcd19338cccfb36049078c716b5cbf0ff6d21459))
+
 ## [0.3.0](https://github.com/cheminfo/service-monitor/compare/service-accounts-frontend-v0.2.0...service-accounts-frontend-v0.3.0) (2026-10-28)
 
 
