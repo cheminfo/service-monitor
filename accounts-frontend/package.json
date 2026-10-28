@@ -1,6 +1,6 @@
 {
   "name": "service-accounts-frontend",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "React and Blueprint pages for the service-accounts-backend routes: the sign-in form and dialog, a gate by role, the administrators' Accounts page, and the account menu of the bar, in react-cheminfo's languages.",
   "keywords": [
     "accounts",
