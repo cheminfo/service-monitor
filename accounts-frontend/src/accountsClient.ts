@@ -91,6 +91,14 @@ export function createAccountsClient(
     signIn: (username: string, password: string) =>
       send<AccountSession>('/login', 'POST', { username, password }),
     /**
+     * Sign in with the password a site's operators share, on a site served by
+     * `createSharedPassword`; the server answers with the cookie.
+     * @param password - as typed
+     * @returns the session, with no username
+     */
+    signInWithPassword: (password: string) =>
+      send<AccountSession>('/login', 'POST', { password }),
+    /**
      * Sign this browser out.
      * @returns the session, signed out
      */

@@ -60,7 +60,9 @@ same way.
 
 ## Consumers
 
-The accounts: chembio.cheminfo.org and mz.cheminfo.org on 0.1.0 from npm,
+The shared password: zebra-label-printer-manager, with dialogs of its own over
+`service-accounts-frontend/session`, since it stays on React 18 and
+react-cheminfo needs 19. The accounts: chembio.cheminfo.org and mz.cheminfo.org on 0.1.0 from npm,
 with the routes under `/v1/admin`; drugs.cheminfo.org through `file:` links,
 under `/v1/account`. molecules.cheminfo.org and literature still carry their
 own sign-in or token gate and move to it next. Until react-cheminfo publishes

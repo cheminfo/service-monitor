@@ -98,3 +98,23 @@ peer is react-cheminfo 0.70.0 or later. The pages are styled with the tokens of
 react-cheminfo's `chrome.css`, which the host imports.
 
 More in the [repository's README](https://github.com/cheminfo/service-monitor).
+
+**Without the pages**, a site that keeps its own dialogs or does not use
+react-cheminfo imports `service-accounts-frontend/session`: the client, the
+session store and `useAccountSession`, needing neither react-cheminfo (an
+optional peer) nor Blueprint. On a site served by `createSharedPassword`,
+`signInWithPassword` sends the password alone.
+
+```ts
+import {
+  createAccountSession,
+  createAccountsClient,
+  useAccountSession,
+} from 'service-accounts-frontend/session';
+
+export const accounts = createAccountSession(createAccountsClient('/v1/auth'));
+void accounts.load();
+
+const outcome = await accounts.signInWithPassword(password);
+if (!outcome.ok) showError(outcome.failure.message);
+```

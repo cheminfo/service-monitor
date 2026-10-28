@@ -13,6 +13,7 @@
   "type": "module",
   "exports": {
     ".": "./lib/index.js",
+    "./session": "./lib/session.js",
     "./styles.css": "./styles/accounts.css"
   },
   "files": [
@@ -36,6 +37,11 @@
     "@blueprintjs/icons": "^6.0.0",
     "react": "^18.0.0 || ^19.0.0",
     "react-cheminfo": ">=0.71.0 <1"
+  },
+  "peerDependenciesMeta": {
+    "react-cheminfo": {
+      "optional": true
+    }
   },
   "devDependencies": {
     "@blueprintjs/core": "^6.21.0",

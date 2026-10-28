@@ -69,6 +69,23 @@ export function createAccountSession(client: AccountsClient) {
   }
 
   /**
+   * Sign in through one of the client's routes, and share the new session.
+   * @param request - the sign-in
+   * @returns the session, or why the server refused it
+   */
+  async function open(
+    request: () => Promise<AccountSession>,
+  ): Promise<Outcome<AccountSession>> {
+    try {
+      const session = await request();
+      set({ session, notice: null });
+      return { ok: true, value: session };
+    } catch (error: unknown) {
+      return { ok: false, failure: failureOf(error) };
+    }
+  }
+
+  /**
    * Go back to signed out when the server says the session has ended.
    * @param error - what a request threw
    * @returns whether it was that
@@ -110,18 +127,18 @@ export function createAccountSession(client: AccountsClient) {
      * @param password - as typed
      * @returns the session, or why the server refused it
      */
-    signIn: async (
+    signIn: (
       username: string,
       password: string,
-    ): Promise<Outcome<AccountSession>> => {
-      try {
-        const session = await client.signIn(username, password);
-        set({ session, notice: null });
-        return { ok: true, value: session };
-      } catch (error: unknown) {
-        return { ok: false, failure: failureOf(error) };
-      }
-    },
+    ): Promise<Outcome<AccountSession>> =>
+      open(() => client.signIn(username, password)),
+    /**
+     * Sign in with the password a site's operators share.
+     * @param password - as typed
+     * @returns the session, or why the server refused it
+     */
+    signInWithPassword: (password: string): Promise<Outcome<AccountSession>> =>
+      open(() => client.signInWithPassword(password)),
     /** Sign this browser out. */
     signOut: async (): Promise<void> => {
       try {
