@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.1](https://github.com/cheminfo/service-monitor/compare/service-accounts-frontend-v0.4.0...service-accounts-frontend-v0.4.1) (2026-11-03)
+
+
+### Bug Fixes
+
+* **accounts-frontend:** give every form field an id of its own ([bed58e6](https://github.com/cheminfo/service-monitor/commit/bed58e638761f11ae409c6558c100a94366bd525))
+
 ## [0.4.0](https://github.com/cheminfo/service-monitor/compare/service-accounts-frontend-v0.3.0...service-accounts-frontend-v0.4.0) (2026-10-28)
 
 

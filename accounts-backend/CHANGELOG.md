@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.0](https://github.com/cheminfo/service-monitor/compare/service-accounts-backend-v0.3.0...service-accounts-backend-v0.4.0) (2026-11-03)
+
+
+### Features
+
+* **accounts-backend:** keep accounts in a host's own table, with per-account API tokens ([5279bf3](https://github.com/cheminfo/service-monitor/commit/5279bf31f75f20566d8d565234bef953b855bf0e))
+
 ## [0.3.0](https://github.com/cheminfo/service-monitor/compare/service-accounts-backend-v0.2.0...service-accounts-backend-v0.3.0) (2026-10-28)
 
 
