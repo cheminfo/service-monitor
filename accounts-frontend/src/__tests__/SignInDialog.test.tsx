@@ -10,7 +10,7 @@ import { createAccountSession } from '../accountSession.ts';
 import { createAccountsClient } from '../accountsClient.ts';
 import { useAccountSession } from '../useAccountSession.ts';
 
-import { button, click, mount, required, type } from './dom.ts';
+import { button, click, field, mount, required, type } from './dom.ts';
 import { API, PASSWORD, fakeServer } from './fakeServer.ts';
 
 /**
@@ -67,12 +67,12 @@ test("the About's invitation opens the dialog, which signs in and closes", async
   );
   const title = document.querySelector('.bp6-dialog-header')?.textContent;
 
-  await type(dialog.querySelector('#accounts-username'), 'ada');
-  await type(dialog.querySelector('#accounts-password'), 'a guess');
+  await type(field(dialog, 'Username'), 'ada');
+  await type(field(dialog, 'Password'), 'a guess');
   await click(button(dialog, 'Sign in'));
   const refusal = dialog.querySelector('[role="alert"]')?.textContent;
 
-  await type(dialog.querySelector('#accounts-password'), PASSWORD);
+  await type(field(dialog, 'Password'), PASSWORD);
   await click(button(dialog, 'Sign in'));
 
   expect(title).toBe('Sign in');
@@ -92,14 +92,12 @@ test('backing out closes the dialog and keeps nobody signed in', async () => {
   const { host, server } = await about();
 
   await click(host.querySelector('button.about-sign-in'));
-  await type(document.querySelector('#accounts-username'), 'ada');
+  await type(field(document, 'Username'), 'ada');
   await click(button(document.body, 'Cancel'));
   await click(host.querySelector('button.about-sign-in'));
 
   expect(server.asked.map((each) => each.url)).toStrictEqual([
     '/v1/account/session',
   ]);
-  expect(
-    document.querySelector<HTMLInputElement>('#accounts-username')?.value,
-  ).toBe('');
+  expect(field(document, 'Username').value).toBe('');
 });

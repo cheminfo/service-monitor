@@ -111,3 +111,45 @@ export function required<T extends Element>(
   if (element === null) throw new Error(`there is no ${what}`);
   return element;
 }
+
+/**
+ * The fields of a container whose label reads exactly this, each found the
+ * way the browser finds it: through the label's `for`, so a label pointing at
+ * an id somebody else also carries names that other field, as on the page.
+ * @param container - where to look
+ * @param text - the label
+ * @returns the fields, in the order of their labels
+ */
+export function fieldsLabelled(
+  container: ParentNode,
+  text: string,
+): HTMLElement[] {
+  const fields: HTMLElement[] = [];
+  for (const label of container.querySelectorAll('label')) {
+    if (label.textContent?.trim() === text && label.control !== null) {
+      fields.push(label.control);
+    }
+  }
+  return fields;
+}
+
+/**
+ * The one field of a container whose label reads exactly this.
+ * @param container - where to look
+ * @param text - the label
+ * @returns the field
+ */
+export function field(
+  container: ParentNode,
+  text: string,
+): HTMLInputElement | HTMLSelectElement {
+  const fields = fieldsLabelled(container, text);
+  const [found] = fields;
+  if (
+    fields.length !== 1 ||
+    !(found instanceof HTMLInputElement || found instanceof HTMLSelectElement)
+  ) {
+    throw new Error(`there is not exactly one "${text}" field`);
+  }
+  return found;
+}

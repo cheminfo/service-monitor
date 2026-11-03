@@ -95,7 +95,7 @@ test('the sign-in form and the roles are written in French on a French page', ()
     </SiteLanguage>,
   );
 
-  expect(html).toContain('<h1 id="accounts-sign-in-title">Se connecter</h1>');
+  expect(html).toMatch(/<h1 id="[^"]+">Se connecter<\/h1>/);
   expect(html).toContain('Nom d&#x27;utilisateur');
   expect(html).toContain('Mot de passe');
   expect(

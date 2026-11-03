@@ -82,7 +82,6 @@ export function SetPasswordDialog(props: SetPasswordDialogProps) {
             {t('account.setPasswordNote', { username })}
           </p>
           <PasswordPair
-            id="set-password"
             next={next}
             repeat={repeat}
             onNext={setNext}

@@ -2,7 +2,7 @@
 import { expect, test } from 'vitest';
 
 import { page, routes, rows } from './accountsPageFixture.tsx';
-import { button, click, required, type } from './dom.ts';
+import { button, click, field, required, type } from './dom.ts';
 import { PASSWORD } from './fakeServer.ts';
 
 test('an account is added with the role picked, and a name taken is refused', async () => {
@@ -12,18 +12,18 @@ test('an account is added with the role picked, and a name taken is refused', as
     'form to add an account',
   );
 
-  await type(host.querySelector('#account-username'), ' Bob ');
-  await type(host.querySelector('#account-password'), 'his password');
-  await type(host.querySelector('#account-role'), 'write');
+  await type(field(form, 'Username'), ' Bob ');
+  await type(field(form, 'Password'), 'his password');
+  await type(field(form, 'Role'), 'write');
   await click(button(form, 'Add the account'));
   const added = form.textContent;
 
-  await type(host.querySelector('#account-username'), 'ada');
-  await type(host.querySelector('#account-password'), 'another');
+  await type(field(form, 'Username'), 'ada');
+  await type(field(form, 'Password'), 'another');
   await click(button(form, 'Add the account'));
   const taken = form.querySelector('[role="alert"]')?.textContent;
 
-  await type(host.querySelector('#account-username'), 'x');
+  await type(field(form, 'Username'), 'x');
   await click(button(form, 'Add the account'));
 
   expect(added).toContain('bob can sign in now.');
@@ -51,18 +51,18 @@ test('your own password changes with the current one and the new one twice', asy
     'form to change the password',
   );
 
-  await type(host.querySelector('#current-password'), PASSWORD);
-  await type(host.querySelector('#new-password'), 'one');
-  await type(host.querySelector('#new-password-repeat'), 'two');
+  await type(field(form, 'Current password'), PASSWORD);
+  await type(field(form, 'New password'), 'one');
+  await type(field(form, 'New password, again'), 'two');
   await click(button(form, 'Change your password'));
   const differ = form.querySelector('[role="alert"]')?.textContent;
 
-  await type(host.querySelector('#current-password'), 'not it');
-  await type(host.querySelector('#new-password-repeat'), 'one');
+  await type(field(form, 'Current password'), 'not it');
+  await type(field(form, 'New password, again'), 'one');
   await click(button(form, 'Change your password'));
   const wrong = form.querySelector('[role="alert"]')?.textContent;
 
-  await type(host.querySelector('#current-password'), PASSWORD);
+  await type(field(form, 'Current password'), PASSWORD);
   await click(button(form, 'Change your password'));
 
   expect(differ).toBe('The two new passwords differ.');
@@ -70,9 +70,7 @@ test('your own password changes with the current one and the new one twice', asy
   expect(form.textContent).toContain(
     'Your password is changed. Other browsers signed in as you are signed out.',
   );
-  expect(host.querySelector<HTMLInputElement>('#current-password')?.value).toBe(
-    '',
-  );
+  expect(field(form, 'Current password').value).toBe('');
 });
 
 test("another account's password is set in a dialog, which then closes", async () => {
@@ -90,8 +88,8 @@ test("another account's password is set in a dialog, which then closes", async (
   );
   const title = document.querySelector('.bp6-dialog-header')?.textContent;
 
-  await type(dialog.querySelector('#set-password'), 'a new one');
-  await type(dialog.querySelector('#set-password-repeat'), 'a new one');
+  await type(field(dialog, 'New password'), 'a new one');
+  await type(field(dialog, 'New password, again'), 'a new one');
   await click(button(dialog, 'Set the password'));
 
   expect(title).toBe('Set the password of ada');

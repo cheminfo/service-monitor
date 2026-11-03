@@ -1,6 +1,6 @@
 import { Button, Callout, FormGroup, InputGroup } from '@blueprintjs/core';
 import type { SubmitEvent } from 'react';
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import { useChromeT } from 'react-cheminfo/ui';
 
 import type { AccountFormProps } from './AddAccountForm.tsx';
@@ -25,6 +25,7 @@ export function ChangePasswordForm(props: AccountFormProps) {
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [changed, setChanged] = useState(false);
+  const id = useId();
 
   async function change(): Promise<void> {
     setChanged(false);
@@ -71,10 +72,10 @@ export function ChangePasswordForm(props: AccountFormProps) {
     >
       <FormGroup
         label={t('account.currentPassword')}
-        labelFor="current-password"
+        labelFor={`${id}-current`}
       >
         <InputGroup
-          id="current-password"
+          id={`${id}-current`}
           type="password"
           autoComplete="current-password"
           value={current}
@@ -82,7 +83,6 @@ export function ChangePasswordForm(props: AccountFormProps) {
         />
       </FormGroup>
       <PasswordPair
-        id="new-password"
         next={next}
         repeat={repeat}
         onNext={setNext}

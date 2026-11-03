@@ -7,7 +7,7 @@ import { createAccountSession } from '../accountSession.ts';
 import { createAccountsClient } from '../accountsClient.ts';
 import type { AccountRole } from '../rules.ts';
 
-import { button, click, mount, type } from './dom.ts';
+import { button, click, field, mount, type } from './dom.ts';
 import { API, PASSWORD, fakeServer } from './fakeServer.ts';
 
 /**
@@ -65,14 +65,13 @@ test('a browser signed out is asked to sign in, and the form says what for', asy
 test('a wrong password is said in the form, and the right one opens the page', async () => {
   const { host, server } = await gate();
 
-  await type(host.querySelector('#accounts-username'), 'luc');
-  await type(host.querySelector('#accounts-password'), 'a guess');
+  await type(field(host, 'Username'), 'luc');
+  await type(field(host, 'Password'), 'a guess');
   await click(button(host, 'Sign in'));
   const refusal = host.querySelector('[role="alert"]')?.textContent;
-  const cleared =
-    host.querySelector<HTMLInputElement>('#accounts-password')?.value;
+  const cleared = field(host, 'Password').value;
 
-  await type(host.querySelector('#accounts-password'), PASSWORD);
+  await type(field(host, 'Password'), PASSWORD);
   await click(button(host, 'Sign in'));
 
   expect(refusal).toBe('Wrong username or password.');

@@ -102,10 +102,13 @@ test('the account the .env defines is read only, and its own password is changed
     "ADMIN_USERNAME and ADMIN_PASSWORD in the server's .env define this account, so it is changed there.",
   );
   expect(host.querySelector('[data-testid="change-password"]')).toBeNull();
-  expect(
-    host.querySelector('[aria-labelledby="accounts-own"] .accounts-note')
-      ?.textContent,
-  ).toBe(
+
+  const heading = [...host.querySelectorAll('h2')].find(
+    (each) => each.textContent === 'Change your password',
+  );
+  const labelled = `[aria-labelledby="${CSS.escape(heading?.id ?? '')}"]`;
+
+  expect(host.querySelector(`${labelled} .accounts-note`)?.textContent).toBe(
     "The server's .env defines your account: change ADMIN_PASSWORD there, then restart the server.",
   );
 });

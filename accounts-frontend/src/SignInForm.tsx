@@ -1,5 +1,6 @@
 import { Button } from '@blueprintjs/core';
 import type { ReactNode } from 'react';
+import { useId } from 'react';
 import { useChromeT } from 'react-cheminfo/ui';
 
 import { SignInFields } from './SignInFields.tsx';
@@ -37,16 +38,17 @@ export function SignInForm(props: SignInFormProps) {
   const { store, title, note, onSignedIn } = props;
   const t = useChromeT();
   const state = useSignIn(store, onSignedIn);
+  const titleId = useId();
 
   return (
     <div className="accounts-sign-in">
       <form
         className="accounts-panel accounts-form"
-        aria-labelledby="accounts-sign-in-title"
+        aria-labelledby={titleId}
         data-testid="sign-in"
         onSubmit={state.submit}
       >
-        <h1 id="accounts-sign-in-title">{title ?? t('account.signIn')}</h1>
+        <h1 id={titleId}>{title ?? t('account.signIn')}</h1>
         {note === undefined ? null : <p className="accounts-note">{note}</p>}
         <SignInFields state={state} />
         <Button

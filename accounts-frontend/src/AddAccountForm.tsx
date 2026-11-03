@@ -1,6 +1,6 @@
 import { Button, Callout, FormGroup, InputGroup } from '@blueprintjs/core';
 import type { SubmitEvent } from 'react';
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import { useChromeT } from 'react-cheminfo/ui';
 
 import { RoleSelect } from './RoleSelect.tsx';
@@ -43,6 +43,7 @@ export function AddAccountForm(props: AccountFormProps) {
   const [pending, setPending] = useState(false);
   const [failure, setFailure] = useState<AccountFailure | null>(null);
   const [added, setAdded] = useState<string | null>(null);
+  const id = useId();
 
   async function add(): Promise<void> {
     setAdded(null);
@@ -81,11 +82,11 @@ export function AddAccountForm(props: AccountFormProps) {
     <form className="accounts-form" data-testid="add-account" onSubmit={submit}>
       <FormGroup
         label={t('account.username')}
-        labelFor="account-username"
+        labelFor={`${id}-username`}
         helperText={t('account.usernameHelp')}
       >
         <InputGroup
-          id="account-username"
+          id={`${id}-username`}
           value={username}
           autoComplete="off"
           autoCapitalize="off"
@@ -93,17 +94,17 @@ export function AddAccountForm(props: AccountFormProps) {
           onValueChange={setUsername}
         />
       </FormGroup>
-      <FormGroup label={t('account.password')} labelFor="account-password">
+      <FormGroup label={t('account.password')} labelFor={`${id}-password`}>
         <InputGroup
-          id="account-password"
+          id={`${id}-password`}
           type="password"
           autoComplete="new-password"
           value={password}
           onValueChange={setPassword}
         />
       </FormGroup>
-      <FormGroup label={t('account.role')} labelFor="account-role">
-        <RoleSelect id="account-role" value={role} onChange={setRole} />
+      <FormGroup label={t('account.role')} labelFor={`${id}-role`}>
+        <RoleSelect id={`${id}-role`} value={role} onChange={setRole} />
       </FormGroup>
       {failure === null ? null : (
         <Callout intent="danger" compact role="alert">

@@ -1,5 +1,5 @@
 import { Callout, Spinner } from '@blueprintjs/core';
-import { useCallback, useState } from 'react';
+import { useCallback, useId, useState } from 'react';
 import { useAsync, useChromeT } from 'react-cheminfo/ui';
 
 import { AccountsTable } from './AccountsTable.tsx';
@@ -37,6 +37,7 @@ export function AccountsPage(props: AccountsPageProps) {
     null,
   );
   const [setting, setSetting] = useState<Account | null>(null);
+  const id = useId();
 
   const list = useCallback(
     () => store.attempt(() => store.client.accounts()),
@@ -62,8 +63,8 @@ export function AccountsPage(props: AccountsPageProps) {
 
   return (
     <div className="accounts-page" data-testid="accounts-page">
-      <section className="accounts-panel" aria-labelledby="accounts-list">
-        <h2 id="accounts-list">{t('account.accounts')}</h2>
+      <section className="accounts-panel" aria-labelledby={`${id}-list`}>
+        <h2 id={`${id}-list`}>{t('account.accounts')}</h2>
         <p className="accounts-note">{t('account.accountsNote')}</p>
         {failure === null ? null : (
           <Callout intent="danger" compact role="alert">
@@ -88,16 +89,16 @@ export function AccountsPage(props: AccountsPageProps) {
       </section>
 
       <div className="accounts-page__side">
-        <section className="accounts-panel" aria-labelledby="accounts-own">
-          <h2 id="accounts-own">{t('account.changePassword')}</h2>
+        <section className="accounts-panel" aria-labelledby={`${id}-own`}>
+          <h2 id={`${id}-own`}>{t('account.changePassword')}</h2>
           {mine?.envManaged ? (
             <p className="accounts-note">{t('account.ownEnvManaged')}</p>
           ) : (
             <ChangePasswordForm store={store} onChanged={reload} />
           )}
         </section>
-        <section className="accounts-panel" aria-labelledby="accounts-add">
-          <h2 id="accounts-add">{t('account.add')}</h2>
+        <section className="accounts-panel" aria-labelledby={`${id}-add`}>
+          <h2 id={`${id}-add`}>{t('account.add')}</h2>
           <AddAccountForm store={store} onChanged={reload} />
         </section>
       </div>

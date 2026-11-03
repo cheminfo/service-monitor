@@ -1,4 +1,5 @@
 import { Callout, FormGroup, InputGroup } from '@blueprintjs/core';
+import { useId } from 'react';
 import { useChromeT } from 'react-cheminfo/ui';
 
 import type { SignInState } from './useSignIn.ts';
@@ -18,12 +19,15 @@ export function SignInFields(props: {
 }) {
   const { state, autoFocus = false } = props;
   const t = useChromeT();
+  // The form of a page and the dialog of the header may both be open: each
+  // label must name the field beside it, not the first of that id.
+  const id = useId();
 
   return (
     <>
-      <FormGroup label={t('account.username')} labelFor="accounts-username">
+      <FormGroup label={t('account.username')} labelFor={`${id}-username`}>
         <InputGroup
-          id="accounts-username"
+          id={`${id}-username`}
           name="username"
           autoComplete="username"
           autoCapitalize="off"
@@ -33,9 +37,9 @@ export function SignInFields(props: {
           onValueChange={state.setUsername}
         />
       </FormGroup>
-      <FormGroup label={t('account.password')} labelFor="accounts-password">
+      <FormGroup label={t('account.password')} labelFor={`${id}-password`}>
         <InputGroup
-          id="accounts-password"
+          id={`${id}-password`}
           name="password"
           type="password"
           autoComplete="current-password"
