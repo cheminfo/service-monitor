@@ -7,13 +7,19 @@ export type {
   SharedPasswordOptions,
   SharedPasswordProtectOptions,
 } from './sharedPasswordTypes.ts';
-export type { SessionOptions } from './serviceAccountsTypes.ts';
+export type { SessionOptions, VerifyToken } from './serviceAccountsTypes.ts';
 export { DEFAULT_SIGN_IN_LIMIT } from './serviceAccountsTypes.ts';
 export { readAccountConfig } from './accountConfig.ts';
 export type { AccountConfig } from './accountConfig.ts';
 export { hashPassword, verifyPassword } from './password.ts';
+export type { VerifyLegacyHash } from './password.ts';
 export { RENEW_AFTER_SECONDS, SESSION_SECONDS } from './sessions.ts';
-export { SESSION_SCHEME, TOKEN_SCHEME } from './routes/schemas.ts';
+export {
+  ACCOUNT_TOKEN_SCHEME,
+  QUERY_TOKEN_SCHEME,
+  SESSION_SCHEME,
+  TOKEN_SCHEME,
+} from './routes/schemas.ts';
 export type { AccountSecuritySchemes } from './routes/schemas.ts';
 export * from './rules.ts';
 export type * from './types.ts';

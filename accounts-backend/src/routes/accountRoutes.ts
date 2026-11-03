@@ -1,10 +1,10 @@
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 
 import { createAccount, removeAccount, updateAccount } from '../accounts.ts';
-import type { AccountsContext } from '../guard.ts';
 import { refuse, refuseAccountError } from '../refuse.ts';
+import type { AccountsContext } from '../sessionContext.ts';
 import { toAccount } from '../signIn.ts';
-import type { AccountRow } from '../store/AccountStore.ts';
+import type { AccountRow } from '../store/accountRows.ts';
 import type { AccountPatchBody, NewAccountBody } from '../types.ts';
 
 import { documented } from './documented.ts';

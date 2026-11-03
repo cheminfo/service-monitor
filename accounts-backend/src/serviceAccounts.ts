@@ -1,11 +1,9 @@
 import type { FastifyInstance, FastifyPluginAsync } from 'fastify';
 
 import { syncEnvAdmin } from './envAdmin.ts';
-import type { AccountsContext } from './guard.ts';
 import { signedInOf } from './guard.ts';
 import { accountRoutes } from './routes/accountRoutes.ts';
 import { passwordRoute } from './routes/passwordRoute.ts';
-import { accountSecuritySchemes } from './routes/schemas.ts';
 import { sessionRoutes } from './routes/sessionRoutes.ts';
 import { isAccountRole } from './rules.ts';
 import type {
@@ -14,6 +12,7 @@ import type {
   ServiceAccountsOptions,
 } from './serviceAccountsTypes.ts';
 import { DEFAULT_SIGN_IN_LIMIT } from './serviceAccountsTypes.ts';
+import type { AccountsContext } from './sessionContext.ts';
 import { createSessionSetup, protectScope } from './sessionSetup.ts';
 
 /**
@@ -33,7 +32,7 @@ import { createSessionSetup, protectScope } from './sessionSetup.ts';
  * }, { prefix: '/v1' });
  * await accounts.syncEnvAdmin(fastify.log);
  * ```
- * @param options - the store, the cookie, the key and the operator's token
+ * @param options - the accounts, the cookie, the key and the tokens
  * @returns the routes, the guard and the rest
  * @throws {Error} When `production` and no `cookieSecret` is given, saying
  * how to set one.
@@ -41,13 +40,21 @@ import { createSessionSetup, protectScope } from './sessionSetup.ts';
 export async function createServiceAccounts(
   options: ServiceAccountsOptions,
 ): Promise<ServiceAccounts> {
-  const { store, cookieName, signInLimit = DEFAULT_SIGN_IN_LIMIT } = options;
+  const {
+    store,
+    signInLimit = DEFAULT_SIGN_IN_LIMIT,
+    verifyLegacyHash,
+  } = options;
   const storeOf = async () => (typeof store === 'function' ? store() : store);
   const setup = await createSessionSetup(options, async (id) => {
     const opened = await storeOf();
     return opened.byId(id);
   });
-  const context: AccountsContext = { ...setup.context, store: storeOf };
+  const context: AccountsContext = {
+    ...setup.context,
+    store: storeOf,
+    verifyLegacyHash,
+  };
 
   function protect(
     scope: FastifyInstance,
@@ -78,6 +85,6 @@ export async function createServiceAccounts(
     signedIn: (request) => signedInOf(context, request),
     syncEnvAdmin: async (log, env) =>
       syncEnvAdmin(await context.store(), log, env),
-    securitySchemes: accountSecuritySchemes(cookieName),
+    securitySchemes: setup.securitySchemes,
   };
 }

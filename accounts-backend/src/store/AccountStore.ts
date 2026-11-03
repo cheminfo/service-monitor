@@ -4,6 +4,7 @@ import { DatabaseSync } from 'node:sqlite';
 
 import type { AccountRole } from '../rules.ts';
 
+import type { AccountDirectory } from './AccountDirectory.ts';
 import type {
   AccountInsert,
   AccountRow,
@@ -24,9 +25,11 @@ export type {
  * table carries a migration record of its own, so the file may also hold the
  * host's tables, migrated by the host.
  *
- * It holds a handful of rows, so counting them is cheap.
+ * It holds a handful of rows, so counting them is cheap. Every guarantee of
+ * {@link AccountDirectory} is kept in SQL: the last administrator is never
+ * demoted nor removed, in one statement, and a username is unique.
  */
-export class AccountStore {
+export class AccountStore implements AccountDirectory {
   /**
    * Open the store, creating its directory and its table or bringing it up to
    * date.

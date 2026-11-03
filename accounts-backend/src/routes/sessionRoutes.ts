@@ -1,13 +1,13 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 
-import type { AccountsContext, SessionContext } from '../guard.ts';
-import { sessionCookie } from '../guard.ts';
+import { sessionCookie } from '../credentials.ts';
 import { isSameOrigin } from '../isSameOrigin.ts';
 import { refuse } from '../refuse.ts';
 import { MAX_PASSWORD_LENGTH, REFUSAL_MESSAGES } from '../rules.ts';
+import type { AccountsContext, SessionContext } from '../sessionContext.ts';
 import { SESSION_SECONDS, shouldRenew } from '../sessions.ts';
-import { checkSignIn } from '../signIn.ts';
-import type { AccountRow } from '../store/AccountStore.ts';
+import { checkSignIn, nowSeconds } from '../signIn.ts';
+import type { AccountRow } from '../store/accountRows.ts';
 import type { AccountSession, SignInBody } from '../types.ts';
 
 import { documented } from './documented.ts';
@@ -61,6 +61,8 @@ export function sessionRoutes(
         await context.store(),
         username,
         password,
+        nowSeconds(),
+        context.verifyLegacyHash,
       );
       if (account === null) {
         request.log.warn(

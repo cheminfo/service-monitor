@@ -8,7 +8,8 @@ import {
   usernameProblem,
 } from './rules.ts';
 import { nowSeconds } from './signIn.ts';
-import type { AccountRow, AccountStore } from './store/AccountStore.ts';
+import type { AccountDirectory } from './store/AccountDirectory.ts';
+import type { AccountRow } from './store/accountRows.ts';
 import type { AccountPatchBody } from './types.ts';
 
 /** A change to the accounts that cannot be made, with the reason. */
@@ -41,7 +42,9 @@ export interface NewAccount {
 }
 
 /**
- * Add an account.
+ * Add an account. The username is looked up again once the password is
+ * hashed, in the same turn as the write, so two requests adding it at once
+ * cannot both succeed.
  * @param store - the accounts
  * @param account - its username, its password and its role
  * @param now - when, in unix seconds
@@ -50,7 +53,7 @@ export interface NewAccount {
  * password is empty or too long.
  */
 export async function createAccount(
-  store: AccountStore,
+  store: AccountDirectory,
   account: NewAccount,
   now: number = nowSeconds(),
 ): Promise<AccountRow> {
@@ -61,9 +64,13 @@ export async function createAccount(
   if (store.byUsername(username) !== undefined) {
     throw new AccountError('usernameTaken');
   }
+  const passwordHash = await hashPassword(account.password);
+  if (store.byUsername(username) !== undefined) {
+    throw new AccountError('usernameTaken');
+  }
   const id = store.insert({
     username,
-    passwordHash: await hashPassword(account.password),
+    passwordHash,
     role: account.role ?? DEFAULT_ACCOUNT_ROLE,
     createdAt: now,
   });
@@ -82,7 +89,7 @@ export async function createAccount(
  * `.env` defines the account.
  */
 export async function setAccountPassword(
-  store: AccountStore,
+  store: AccountDirectory,
   id: number,
   password: string,
   now: number = nowSeconds(),
@@ -103,7 +110,9 @@ export async function setAccountPassword(
 
 /**
  * Give an account a new role, which applies at its next request: a session
- * reads its account again every time.
+ * reads its account again every time. The last administrator is refused here
+ * before the directory is asked, in the same turn as the write, and again by
+ * the directory itself.
  * @param store - the accounts
  * @param id - the account's row id
  * @param role - its new role
@@ -112,13 +121,16 @@ export async function setAccountPassword(
  * last administrator and the role is not `admin`.
  */
 export function setAccountRole(
-  store: AccountStore,
+  store: AccountDirectory,
   id: number,
   role: AccountRole,
 ): AccountRow | undefined {
   const account = store.byId(id);
   if (account === undefined) return undefined;
   if (account.envManaged) throw new AccountError('envManaged');
+  if (role !== 'admin' && isLastAdmin(store, account)) {
+    throw new AccountError('lastAdmin');
+  }
   if (!store.setRole(id, role)) {
     // Refused by the statement itself: the last administrator, unless the
     // account went meanwhile.
@@ -141,7 +153,7 @@ export function setAccountRole(
  * the account, or it is the last administrator and the role is not `admin`.
  */
 export async function updateAccount(
-  store: AccountStore,
+  store: AccountDirectory,
   id: number,
   patch: AccountPatchBody,
   now: number = nowSeconds(),
@@ -165,14 +177,30 @@ export async function updateAccount(
  * @returns what was done
  */
 export function removeAccount(
-  store: AccountStore,
+  store: AccountDirectory,
   id: number,
 ): 'removed' | 'missing' | 'lastAdmin' | 'envManaged' {
   const account = store.byId(id);
   if (account === undefined) return 'missing';
   if (account.envManaged) return 'envManaged';
+  if (isLastAdmin(store, account)) return 'lastAdmin';
   if (store.removeUnlessLastAdmin(id)) return 'removed';
   return store.byId(id) === undefined ? 'missing' : 'lastAdmin';
+}
+
+/**
+ * Whether an account is the only administrator left.
+ * @param store - the accounts
+ * @param account - the account
+ * @returns true when it is an administrator and no other account is
+ */
+function isLastAdmin(store: AccountDirectory, account: AccountRow): boolean {
+  if (account.role !== 'admin') return false;
+  const accounts = store.all();
+  for (const other of accounts) {
+    if (other.role === 'admin' && other.id !== account.id) return false;
+  }
+  return true;
 }
 
 /**
@@ -182,7 +210,7 @@ export function removeAccount(
  * @returns it
  * @throws {Error} When it is not there, which only a concurrent removal does.
  */
-function required(store: AccountStore, id: number): AccountRow {
+function required(store: AccountDirectory, id: number): AccountRow {
   const row = store.byId(id);
   if (row === undefined) throw new Error(`account ${id} was removed meanwhile`);
   return row;

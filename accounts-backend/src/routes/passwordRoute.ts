@@ -1,10 +1,10 @@
 import type { FastifyInstance } from 'fastify';
 
 import { setAccountPassword } from '../accounts.ts';
-import type { AccountsContext } from '../guard.ts';
-import { verifyPassword } from '../password.ts';
 import { refuse, refuseAccountError } from '../refuse.ts';
-import type { AccountRow } from '../store/AccountStore.ts';
+import type { AccountsContext } from '../sessionContext.ts';
+import { passwordMatches } from '../signIn.ts';
+import type { AccountRow } from '../store/accountRows.ts';
 import type { ChangePasswordBody } from '../types.ts';
 
 import { documented } from './documented.ts';
@@ -48,7 +48,12 @@ export function passwordRoute(
       }
       if (signedIn.envManaged) return refuse(reply, 400, 'envManaged');
       const { currentPassword, newPassword } = request.body;
-      if (!(await verifyPassword(currentPassword, signedIn.passwordHash))) {
+      const matches = await passwordMatches(
+        currentPassword,
+        signedIn.passwordHash,
+        context.verifyLegacyHash,
+      );
+      if (!matches) {
         return refuse(reply, 400, 'wrongCurrentPassword');
       }
       let account: AccountRow | undefined;

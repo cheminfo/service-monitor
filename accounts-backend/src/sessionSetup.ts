@@ -4,22 +4,26 @@ import fastifyCookie from '@fastify/cookie';
 import fastifyRateLimit from '@fastify/rate-limit';
 import type { FastifyInstance, FastifySchema } from 'fastify';
 
-import type { SessionContext } from './guard.ts';
-import { CHANGES, createGuard } from './guard.ts';
+import { CHANGES } from './credentials.ts';
+import { createGuard } from './guard.ts';
 import type { DocumentedSchema } from './routes/documented.ts';
+import type { AccountSecuritySchemes } from './routes/schemas.ts';
 import {
   ERROR_SCHEMA,
-  SESSION_SCHEME,
-  TOKEN_SCHEME,
+  accountSecuritySchemes,
+  guardedSecurity,
 } from './routes/schemas.ts';
 import type { AccountRole } from './rules.ts';
 import type { SessionOptions } from './serviceAccountsTypes.ts';
+import type { SessionContext } from './sessionContext.ts';
 import { createSessions } from './sessions.ts';
 
 /** What both kinds of sign-in start from. */
 export interface SessionSetup {
-  /** The sessions, the cookie and the operator's token. */
+  /** The sessions, the cookie and the tokens. */
   context: SessionContext;
+  /** The security schemes, for `components.securitySchemes` of the host. */
+  securitySchemes: AccountSecuritySchemes;
   /**
    * Register what the routes need in their scope, the cookies and the rate
    * limit, unless the host already has; say once when a random key signs.
@@ -30,7 +34,7 @@ export interface SessionSetup {
 
 /**
  * The sessions a sign-in opens, signed with `COOKIE_SECRET`.
- * @param options - the cookie, the key and the operator's token
+ * @param options - the cookie, the key and the tokens
  * @param findAccount - reads the account a session names
  * @returns the context, and what prepares the routes' scope
  * @throws {Error} When `production` and no `cookieSecret` is given, saying
@@ -43,6 +47,8 @@ export async function createSessionSetup(
   const {
     cookieName,
     purpose,
+    verifyToken,
+    tokenQueryParameter = false,
     production = process.env.NODE_ENV === 'production',
   } = options;
   // Blank is unset: the compose files hand an unset variable over as ''.
@@ -58,10 +64,16 @@ export async function createSessionSetup(
     sessions: await createSessions({ purpose, secret: cookieSecret }),
     cookieName,
     adminToken,
+    verifyToken,
+    tokenQueryParameter,
   };
   let toldRandomKey = cookieSecret !== undefined;
   return {
     context,
+    securitySchemes: accountSecuritySchemes(cookieName, {
+      accountTokens: verifyToken !== undefined,
+      queryToken: tokenQueryParameter,
+    }),
     async prepare(instance) {
       if (!toldRandomKey) {
         toldRandomKey = true;
@@ -83,7 +95,7 @@ export async function createSessionSetup(
  * Guard every route registered after it in a scope, and name the credentials
  * they take in the OpenAPI document.
  * @param scope - an encapsulated scope, so the routes beside it stay open
- * @param context - the sessions and the operator's token
+ * @param context - the sessions and the tokens
  * @param role - the role every route of the scope needs at least
  * @param openReads - whether a request that changes nothing passes for
  * everybody, its routes then documented without credentials
@@ -104,10 +116,12 @@ export function protectScope(
     const schema = route.schema as DocumentedSchema | undefined;
     route.schema = {
       ...schema,
-      security: schema?.security ?? [
-        { [SESSION_SCHEME]: [] },
-        { [TOKEN_SCHEME]: [] },
-      ],
+      security:
+        schema?.security ??
+        guardedSecurity({
+          accountTokens: context.verifyToken !== undefined,
+          queryToken: context.tokenQueryParameter,
+        }),
       response: {
         ...(schema?.response as Record<string, unknown> | undefined),
         401: ERROR_SCHEMA,

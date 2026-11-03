@@ -123,13 +123,178 @@ accounts. An account added without a role only reads.
   than its scope with `config: { accountRole: 'admin' }`, never less. It sets
   `request.signedInAccount`, null for the `ADMIN_TOKEN`.
 - **`signedIn(request)`** reads the same credentials but refuses nobody:
-  `{ account, role }` for an account signed in, `{ account: null, role:
+  `{ account, role }` for an account signed in or sending its API token
+  (§ API tokens), `{ account: null, role:
 'admin' }` for the `ADMIN_TOKEN`, and `null` for anybody else, a session
   asking for a change from another site's page included.
 - **The `ADMIN_TOKEN`** is a bearer token for scripts, acting as an
   administrator, taken from anywhere.
 - **A new role applies at the next request**: a session reads its account
   again every time.
+
+## Accounts in the host's own table
+
+A site that already keeps its people — with their ids, their password hashes,
+their roles and the foreign keys that point at them — hands that table to
+`store` instead of `accounts.sqlite`, behind an `AccountDirectory`. The
+routes, the guard, the sessions and `syncEnvAdmin` then read and write it, and
+no second table of users exists.
+
+```ts
+import type {
+  AccountDirectory,
+  AccountRole,
+  AccountRow,
+} from 'service-accounts-backend';
+
+// The host's roles, by the role of the accounts each stands for.
+const HOST_ROLES = { read: 'guest', write: 'user', admin: 'admin' } as const;
+const ACCOUNT_ROLES: Record<string, AccountRole> = {
+  guest: 'read',
+  user: 'write',
+  admin: 'admin',
+};
+
+const COLUMNS = `id, mail AS username, password_hash AS passwordHash, role,
+  env_admin AS envAdmin, created_at AS createdAt,
+  password_set_at AS passwordChangedAt, last_login_at AS lastSignInAt`;
+const NOT_THE_LAST_ADMIN = `(role != 'admin' OR
+  (SELECT COUNT(*) FROM contacts WHERE role = 'admin') > 1)`;
+
+function contacts(db: DatabaseSync): AccountDirectory {
+  const byId = db.prepare(`SELECT ${COLUMNS} FROM contacts WHERE id = ?`);
+  const setRole = db.prepare(`UPDATE contacts SET role = ?1
+    WHERE id = ?2 AND env_admin = 0 AND (?1 = 'admin' OR ${NOT_THE_LAST_ADMIN})`);
+  // … one statement per method, as `AccountStore` writes them.
+  return {
+    byId: (id) => toAccount(byId.get(id)),
+    setRole: (id, role) =>
+      Number(setRole.run(HOST_ROLES[role], id).changes) > 0,
+    // byUsername, all, count, insert, setPassword, touchSignIn,
+    // removeUnlessLastAdmin, writeEnvAdmin, forgetEnvAdmins
+  };
+}
+
+// What the SELECT answers: the account's columns, the host's role and mark.
+type ContactRow = Omit<AccountRow, 'role' | 'envManaged'> & {
+  role: string;
+  envAdmin: number;
+};
+
+function toAccount(row: unknown): AccountRow | undefined {
+  if (row === undefined) return undefined;
+  const { role, envAdmin, ...contact } = row as ContactRow;
+  return { ...contact, role: ACCOUNT_ROLES[role], envManaged: envAdmin === 1 };
+}
+
+const accounts = await createServiceAccounts({
+  store: contacts(db),
+  cookieName: 'pipeline_session',
+  purpose: 'pipeline session',
+  ...readAccountConfig(),
+});
+```
+
+- **The methods are synchronous**, as `node:sqlite` is. A check the package
+  makes before a write — the last administrator, a username taken — then runs
+  in the same turn of the event loop as the write, so no other request of the
+  process comes between them.
+- **What the host keeps**, and the package relies on: usernames unique and in
+  lower case (`insert` throws on one taken); the last administrator never
+  demoted nor removed, `setRole` and `removeUnlessLastAdmin` answering false —
+  in one statement, so two processes sharing the file cannot both succeed; the
+  account the `.env` defines changed by `writeEnvAdmin` alone; every role one
+  of `read`, `write` and `admin`. The package also refuses the last
+  administrator before it asks, which holds within one process whatever the
+  host does.
+- **Roles of the host's own** are mapped both ways: in the rows it answers,
+  and back in `insert` and `setRole`. A row whose role is none of the three
+  is let through nowhere.
+- **Usernames are those of the accounts**: 3 to 30 letters, digits, dots,
+  dashes and underscores. A row whose username is outside that still signs
+  in, but the routes add none like it.
+
+Prove it with the checks the built-in store passes, in the host's own test:
+
+```ts
+import { accountDirectoryProblems } from 'service-accounts-backend';
+
+test('the contacts are accounts', async () => {
+  const problems = await accountDirectoryProblems(() =>
+    contacts(migratedDatabase(':memory:')),
+  );
+  expect(problems).toStrictEqual([]);
+});
+```
+
+`accountDirectoryProblems(open)` calls `open` once per check, each time for a
+directory holding no account, and answers one sentence per broken guarantee:
+`lastAdmin: setRole demoted the last admin`.
+
+## API tokens
+
+Workers and importers that act as an account, rather than as the operator,
+send that account's token. The host keeps the tokens and says whose each is:
+
+```ts
+const directory = contacts(db);
+const accounts = await createServiceAccounts({
+  store: directory,
+  // The account a token stands for, or undefined.
+  verifyToken: (token) => {
+    const row = tokenStatement.get(token);
+    return row === undefined ? undefined : directory.byId(row.contactId);
+  },
+  // An EventSource cannot set a header: read `?token=` too.
+  tokenQueryParameter: true,
+  // …
+});
+```
+
+- **`verifyToken(token)`** (default: none, only the `ADMIN_TOKEN` is taken)
+  answers the `AccountRow` a token stands for, or `undefined`, synchronously
+  or not. A request sending it as `Authorization: Bearer` is let through at
+  that account's role: `protect` sets `request.signedInAccount`, and
+  `signedIn` answers `{ account, role }`. A token is no cookie, so a change it
+  asks for is taken from any page. The lookup is the host's, and so is
+  comparing in constant time.
+- **The `ADMIN_TOKEN` comes first** and keeps its meaning: `verifyToken` is
+  never asked about it.
+- **`tokenQueryParameter: true`** (default `false`) also reads `?token=` when
+  no `Authorization` header is sent, for either token. A token in the address
+  is written in the access logs of the server and of every proxy before it:
+  keep it to the clients that cannot send a header.
+- **A token nobody has** answers 401 `wrongToken`.
+- `securitySchemes` then also lists `accountToken` (bearer) and `queryToken`
+  (`?token=`), and every guarded route names them.
+
+`createSharedPassword` takes both options too.
+
+## Legacy hashes
+
+A host moving its people over keeps their hashes as they are. Give
+`createServiceAccounts` the check of the former format, as
+`createSharedPassword` takes it:
+
+```ts
+const accounts = await createServiceAccounts({
+  store: contacts(db),
+  // `salt:hash` of scrypt: checked once, then kept as PBKDF2.
+  verifyLegacyHash: verifyScryptHash,
+  // …
+});
+```
+
+- **A hash that is not `pbkdf2$sha512$…`** is checked by `verifyLegacyHash`
+  at a sign-in and for the current password of `POST /password`. Once it
+  matches at a sign-in, the password is hashed again with `hashPassword` and
+  stored with `setPassword`, its date kept: the legacy hash is gone after the
+  first sign-in.
+- **Without `verifyLegacyHash`**, such a hash never verifies, and refusing it
+  costs a password check all the same.
+- A username nobody has still costs a password check, so the time of an
+  answer does not say which exist; an account still on a legacy hash answers
+  in the time its check takes.
 
 ## The administrator of the `.env`
 

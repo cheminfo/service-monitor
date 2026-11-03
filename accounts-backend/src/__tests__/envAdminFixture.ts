@@ -7,7 +7,7 @@ import { fastify } from 'fastify';
 import { onTestFinished } from 'vitest';
 
 import { createServiceAccounts } from '../serviceAccounts.ts';
-import type { AccountStore } from '../store/AccountStore.ts';
+import type { AccountDirectory } from '../store/AccountDirectory.ts';
 
 import { COOKIE, PURPOSE, SECRET } from './testApp.ts';
 
@@ -48,7 +48,10 @@ export function storePath(): string {
  * @param env - What the .env holds.
  * @returns The server, and what the synchronisation said.
  */
-export async function start(store: AccountStore, env: Record<string, string>) {
+export async function start(
+  store: AccountDirectory,
+  env: Record<string, string>,
+) {
   const accounts = await createServiceAccounts({
     store,
     cookieName: COOKIE,

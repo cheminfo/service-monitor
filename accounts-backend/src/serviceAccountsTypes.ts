@@ -7,18 +7,27 @@ import type {
 
 import type { EnvAdminEnvironment, EnvAdminOutcome } from './envAdmin.ts';
 import type { SignedIn } from './guard.ts';
+import type { VerifyLegacyHash } from './password.ts';
 import type { AccountSecuritySchemes } from './routes/schemas.ts';
 import type { AccountRole } from './rules.ts';
-import type { AccountStore } from './store/AccountStore.ts';
+import type { AccountDirectorySource } from './store/AccountDirectory.ts';
+import type { AccountRow } from './store/accountRows.ts';
 
 /** How many sign-ins one client may try per fifteen minutes, unless told. */
 export const DEFAULT_SIGN_IN_LIMIT = 10;
 
-/** The store, or what opens it. */
-export type AccountStoreSource =
-  | AccountStore
-  | Promise<AccountStore>
-  | (() => AccountStore | Promise<AccountStore>);
+/** The store, or what opens it: the name `AccountDirectorySource` had first. */
+export type AccountStoreSource = AccountDirectorySource;
+
+/**
+ * The account an API token stands for, looked up wherever the host keeps its
+ * tokens. The lookup is the host's, and so is comparing in constant time.
+ * @param token - the token a request sent
+ * @returns the account, or undefined when the token is none
+ */
+export type VerifyToken = (
+  token: string,
+) => AccountRow | undefined | Promise<AccountRow | undefined>;
 
 /**
  * What the sessions of both kinds of sign-in are made with: the accounts of
@@ -48,6 +57,23 @@ export interface SessionOptions {
    */
   adminToken?: string;
   /**
+   * The account an API token stands for: a request sending it as a bearer
+   * token is let through at that account's role, as the account, from
+   * anywhere — a token is no cookie, so no page can send it unasked. The
+   * `adminToken` is compared first, and keeps its meaning.
+   * @default undefined — only the `adminToken` is taken
+   */
+  verifyToken?: VerifyToken;
+  /**
+   * Whether a token is also read from `?token=` when no `Authorization`
+   * header is sent, for a client that cannot set one: an `EventSource`, say.
+   * It is then a bearer token in every respect, the `adminToken` included,
+   * and it is written wherever the address is: the access logs of the server
+   * and of every proxy before it.
+   * @default false
+   */
+  tokenQueryParameter?: boolean;
+  /**
    * How many sign-ins one client may try per fifteen minutes.
    * @default 10
    */
@@ -62,10 +88,19 @@ export interface SessionOptions {
 /** What a service's accounts are made with. */
 export interface ServiceAccountsOptions extends SessionOptions {
   /**
-   * The accounts: `accountStoreOpener(accountStorePath(DATA_DIR))`. A
-   * function is called at every request.
+   * The accounts: `accountStoreOpener(accountStorePath(DATA_DIR))`, or the
+   * host's own table behind an `AccountDirectory`. A function is called at
+   * every request.
    */
-  store: AccountStoreSource;
+  store: AccountDirectorySource;
+  /**
+   * Check a password against a stored hash in a format the host kept before
+   * it used this package. When it matches at a sign-in, the password is
+   * hashed again in the package's format and kept, so it is asked once per
+   * account. `POST /password` asks it for the current password too.
+   * @default undefined — only the package's own hashes verify
+   */
+  verifyLegacyHash?: VerifyLegacyHash;
 }
 
 /** How a scope of the host's is guarded. */

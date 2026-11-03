@@ -4,6 +4,7 @@ import type {
   FastifyRequest,
 } from 'fastify';
 
+import type { VerifyLegacyHash } from './password.ts';
 import type { AccountSecuritySchemes } from './routes/schemas.ts';
 import type { SessionOptions } from './serviceAccountsTypes.ts';
 
@@ -28,7 +29,7 @@ export interface SharedPasswordOptions extends SessionOptions {
    * package's format and kept, so it is asked only once per hash.
    * @default undefined — only the package's own hashes verify
    */
-  verifyLegacyHash?: (password: string, hash: string) => Promise<boolean>;
+  verifyLegacyHash?: VerifyLegacyHash;
 }
 
 /** How a scope of the host's is guarded by the shared password. */

@@ -8,6 +8,18 @@ const KEY_BITS = 512;
 const PREFIX = 'pbkdf2$sha512';
 
 /**
+ * Checks a password against a hash in a format the host kept before it used
+ * this package: scrypt's `salt:hash`, say.
+ * @param password - the password, as typed
+ * @param hash - the hash the host kept
+ * @returns whether they match
+ */
+export type VerifyLegacyHash = (
+  password: string,
+  hash: string,
+) => boolean | Promise<boolean>;
+
+/**
  * Hash a password with PBKDF2-HMAC-SHA-512, through Web Crypto. The format is
  * learn.cheminfo.org's and molecules.cheminfo.org's, so a hash moves between
  * the sites unchanged.
@@ -43,6 +55,16 @@ export async function verifyPassword(
   if (salt.length === 0 || expected.length === 0) return false;
   const actual = await derive(password, salt, iterations);
   return sameBytes(actual, expected);
+}
+
+/**
+ * Whether a hash is of the package's own format, as {@link hashPassword}
+ * writes it, rather than one a host kept before.
+ * @param hash - the hash
+ * @returns true when it starts with `pbkdf2$sha512$`
+ */
+export function isPackageHash(hash: string): boolean {
+  return hash.startsWith(`${PREFIX}$`);
 }
 
 /**

@@ -1,8 +1,7 @@
 import type { FastifyPluginAsync } from 'fastify';
 
 import { signedInOf } from './guard.ts';
-import { hashPassword, verifyPassword } from './password.ts';
-import { accountSecuritySchemes } from './routes/schemas.ts';
+import { hashPassword, isPackageHash } from './password.ts';
 import { sessionStateRoutes } from './routes/sessionRoutes.ts';
 import {
   sharedPasswordChangeRoute,
@@ -14,8 +13,8 @@ import type {
   SharedPassword,
   SharedPasswordOptions,
 } from './sharedPasswordTypes.ts';
-import { checkAgainstNobody } from './signIn.ts';
-import type { AccountRow } from './store/AccountStore.ts';
+import { checkAgainstNobody, passwordMatches } from './signIn.ts';
+import type { AccountRow } from './store/accountRows.ts';
 
 /**
  * One password a site's operators share, with no usernames and no store of
@@ -38,7 +37,7 @@ import type { AccountRow } from './store/AccountStore.ts';
  *   scope.post('/printers', …);
  * }, { prefix: '/v1' });
  * ```
- * @param options - where the hash is kept, the cookie, the key and the operator's token
+ * @param options - where the hash is kept, the cookie, the key and the tokens
  * @returns the routes, the guard and the rest
  * @throws {Error} When `production` and no `cookieSecret` is given, saying
  * how to set one.
@@ -47,7 +46,6 @@ export async function createSharedPassword(
   options: SharedPasswordOptions,
 ): Promise<SharedPassword> {
   const {
-    cookieName,
     signInLimit = DEFAULT_SIGN_IN_LIMIT,
     readPasswordHash,
     writePasswordHash,
@@ -58,7 +56,7 @@ export async function createSharedPassword(
     const hash = await readPasswordHash();
     return hash === undefined ? undefined : sharedAccount(hash);
   });
-  const { context } = setup;
+  const { context, securitySchemes } = setup;
 
   async function check(password: string): Promise<AccountRow | null> {
     const stored = await readPasswordHash();
@@ -66,14 +64,10 @@ export async function createSharedPassword(
       await checkAgainstNobody(password);
       return null;
     }
-    if (await verifyPassword(password, stored)) return sharedAccount(stored);
-    if (
-      verifyLegacyHash === undefined ||
-      stored.startsWith(PACKAGE_HASH_PREFIX) ||
-      !(await verifyLegacyHash(password, stored))
-    ) {
+    if (!(await passwordMatches(password, stored, verifyLegacyHash))) {
       return null;
     }
+    if (isPackageHash(stored)) return sharedAccount(stored);
     const upgraded = await hashPassword(password);
     await writePasswordHash(upgraded);
     return sharedAccount(upgraded);
@@ -103,15 +97,12 @@ export async function createSharedPassword(
     routes,
     protect,
     signedIn: async (request) => (await signedInOf(context, request)) !== null,
-    securitySchemes: accountSecuritySchemes(cookieName),
+    securitySchemes,
   };
 }
 
 /** The account id the shared password's sessions name; no stored account has it. */
 const SHARED_ACCOUNT_ID = 0;
-
-/** How a hash of the package's own format starts. */
-const PACKAGE_HASH_PREFIX = 'pbkdf2$';
 
 /**
  * The shared password, as the sessions and the guard read an account: an

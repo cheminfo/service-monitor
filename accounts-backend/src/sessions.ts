@@ -1,5 +1,5 @@
 import { fromHex, toHex } from './hex.ts';
-import type { AccountRow } from './store/AccountStore.ts';
+import type { AccountRow } from './store/accountRows.ts';
 
 /**
  * How long a session lasts once signed in, in seconds: 400 days, the longest

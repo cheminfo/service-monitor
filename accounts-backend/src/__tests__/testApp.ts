@@ -4,6 +4,7 @@ import { fastify } from 'fastify';
 import { createAccount } from '../accounts.ts';
 import { createServiceAccounts } from '../serviceAccounts.ts';
 import type { ServiceAccountsOptions } from '../serviceAccountsTypes.ts';
+import type { AccountDirectory } from '../store/AccountDirectory.ts';
 import { AccountStore } from '../store/AccountStore.ts';
 
 /** The host the test site is served from. */
@@ -34,7 +35,7 @@ export const SAME_SITE = { host: HOST, origin: `https://${HOST}` };
 /** A test site: its accounts, and routes of its own. */
 export interface TestApp {
   app: FastifyInstance;
-  store: AccountStore;
+  store: AccountDirectory;
 }
 
 /**
@@ -48,15 +49,17 @@ export interface TestApp {
  * @param options - How the site is built.
  * @param options.logger - What the server logs to.
  * @param options.accounts - Options of `createServiceAccounts` to change.
+ * @param options.directory - Where the accounts are kept; a new store when left out.
  * @returns The site and its accounts.
  */
 export async function testApp(
   options: {
     logger?: object | boolean;
     accounts?: Partial<ServiceAccountsOptions>;
+    directory?: AccountDirectory;
   } = {},
 ): Promise<TestApp> {
-  const store = await AccountStore.open(':memory:');
+  const store = options.directory ?? (await AccountStore.open(':memory:'));
   await createAccount(store, {
     username: 'admin',
     password: PASSWORD,

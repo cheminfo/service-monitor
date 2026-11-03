@@ -1,6 +1,8 @@
-import { hashPassword, verifyPassword } from './password.ts';
+import type { VerifyLegacyHash } from './password.ts';
+import { hashPassword, isPackageHash, verifyPassword } from './password.ts';
 import { toUsername } from './rules.ts';
-import type { AccountRow, AccountStore } from './store/AccountStore.ts';
+import type { AccountDirectory } from './store/AccountDirectory.ts';
+import type { AccountRow } from './store/accountRows.ts';
 import type { Account } from './types.ts';
 
 /** A hash no password matches, so a sign-in as nobody costs a real check. */
@@ -10,27 +12,70 @@ let decoyHash: Promise<string> | undefined;
  * The account a username and a password sign in to.
  *
  * A username nobody has costs a password check all the same, so the time an
- * answer takes does not say which usernames exist.
- * @param store - the accounts, where the sign-in is recorded
+ * answer takes does not say which usernames exist. A hash the host kept
+ * before, in a format of its own, is checked by `verifyLegacyHash`, and once
+ * it matches it is replaced by the package's: it is asked once per account.
+ * @param directory - the accounts, where the sign-in is recorded
  * @param username - the username, as typed
  * @param password - the password, as typed
  * @param now - when, in unix seconds
+ * @param verifyLegacyHash - checks a hash of the host's own format; without
+ * it, such a hash never matches
  * @returns the account, or null when the pair is not one
  */
 export async function checkSignIn(
-  store: AccountStore,
+  directory: AccountDirectory,
   username: string,
   password: string,
   now: number = nowSeconds(),
+  verifyLegacyHash?: VerifyLegacyHash,
 ): Promise<AccountRow | null> {
-  const account = store.byUsername(toUsername(username));
+  const account = directory.byUsername(toUsername(username));
   if (account === undefined) {
     await checkAgainstNobody(password);
     return null;
   }
-  if (!(await verifyPassword(password, account.passwordHash))) return null;
-  store.touchSignIn(account.id, now);
-  return { ...account, lastSignInAt: now };
+  const { id, passwordHash, passwordChangedAt } = account;
+  if (!(await passwordMatches(password, passwordHash, verifyLegacyHash))) {
+    return null;
+  }
+  let signedIn = account;
+  if (!isPackageHash(passwordHash)) {
+    const upgraded = await hashPassword(password);
+    // Unless the password changed while it was hashed. The password itself
+    // is the same, so its date stays.
+    if (
+      directory.byId(id)?.passwordHash === passwordHash &&
+      directory.setPassword(id, upgraded, passwordChangedAt)
+    ) {
+      signedIn = { ...account, passwordHash: upgraded };
+    }
+  }
+  directory.touchSignIn(id, now);
+  return { ...signedIn, lastSignInAt: now };
+}
+
+/**
+ * Whether a password is the one a stored hash was made from: the package's
+ * own hash, or one of the host's former format checked by `verifyLegacyHash`.
+ * A hash of another format with nothing to check it costs a password check
+ * all the same.
+ * @param password - the password, as typed
+ * @param hash - the stored hash
+ * @param verifyLegacyHash - checks a hash of the host's own format, if any
+ * @returns true when they match
+ */
+export async function passwordMatches(
+  password: string,
+  hash: string,
+  verifyLegacyHash: VerifyLegacyHash | undefined,
+): Promise<boolean> {
+  if (isPackageHash(hash)) return verifyPassword(password, hash);
+  if (verifyLegacyHash === undefined) {
+    await checkAgainstNobody(password);
+    return false;
+  }
+  return verifyLegacyHash(password, hash);
 }
 
 /**

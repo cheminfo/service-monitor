@@ -10,7 +10,7 @@ import {
   usernameProblem,
 } from './rules.ts';
 import { nowSeconds, toAccount } from './signIn.ts';
-import type { AccountStore } from './store/AccountStore.ts';
+import type { AccountDirectory } from './store/AccountDirectory.ts';
 import type { Account } from './types.ts';
 
 /** The administrator's username when `ADMIN_USERNAME` is unset. */
@@ -61,7 +61,7 @@ export interface EnvAdminOutcome {
  * naming them.
  */
 export async function syncEnvAdmin(
-  store: AccountStore,
+  store: AccountDirectory,
   log: FastifyBaseLogger,
   env: EnvAdminEnvironment = process.env,
 ): Promise<EnvAdminOutcome> {

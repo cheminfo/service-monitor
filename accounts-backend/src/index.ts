@@ -4,12 +4,20 @@ export type {
   ProtectOptions,
   ServiceAccounts,
   ServiceAccountsOptions,
+  SessionOptions,
+  VerifyToken,
 } from './serviceAccountsTypes.ts';
 export { DEFAULT_SIGN_IN_LIMIT } from './serviceAccountsTypes.ts';
 export { readAccountConfig } from './accountConfig.ts';
 export type { AccountConfig } from './accountConfig.ts';
 export type { SignedIn } from './guard.ts';
 export { AccountStore } from './store/AccountStore.ts';
+export type {
+  AccountDirectory,
+  AccountDirectorySource,
+} from './store/AccountDirectory.ts';
+export { accountDirectoryProblems } from './store/accountDirectoryProblems.ts';
+export type { OpenEmptyDirectory } from './store/accountDirectoryProblems.ts';
 export type {
   AccountInsert,
   AccountRow,
@@ -31,6 +39,7 @@ export { checkSignIn, toAccount } from './signIn.ts';
 export { DEFAULT_ADMIN_USERNAME, syncEnvAdmin } from './envAdmin.ts';
 export type { EnvAdminEnvironment, EnvAdminOutcome } from './envAdmin.ts';
 export { hashPassword, verifyPassword } from './password.ts';
+export type { VerifyLegacyHash } from './password.ts';
 export {
   RENEW_AFTER_SECONDS,
   SESSION_SECONDS,
@@ -39,10 +48,15 @@ export {
 } from './sessions.ts';
 export type { Sessions, SessionsOptions, VerifiedSession } from './sessions.ts';
 export {
+  ACCOUNT_TOKEN_SCHEME,
+  QUERY_TOKEN_SCHEME,
   SESSION_SCHEME,
   TOKEN_SCHEME,
   accountSecuritySchemes,
 } from './routes/schemas.ts';
-export type { AccountSecuritySchemes } from './routes/schemas.ts';
+export type {
+  AccountSecuritySchemes,
+  TokenSchemeOptions,
+} from './routes/schemas.ts';
 export * from './rules.ts';
 export type * from './types.ts';

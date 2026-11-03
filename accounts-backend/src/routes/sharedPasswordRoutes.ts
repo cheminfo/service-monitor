@@ -1,9 +1,9 @@
 import type { FastifyInstance } from 'fastify';
 
-import type { SessionContext } from '../guard.ts';
 import { isSameOrigin } from '../isSameOrigin.ts';
 import { refuse } from '../refuse.ts';
-import type { AccountRow } from '../store/AccountStore.ts';
+import type { SessionContext } from '../sessionContext.ts';
+import type { AccountRow } from '../store/accountRows.ts';
 import type { ChangePasswordBody, PasswordSignInBody } from '../types.ts';
 
 import { documented } from './documented.ts';
